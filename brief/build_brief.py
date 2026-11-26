@@ -1,177 +1,121 @@
-#!/usr/bin/env python3
-"""Render the 2-page StegnoZ Project Brief PDF (dev tool; reportlab, not a runtime dependency)."""
+"""Build the StegnoZ two-page Track 3 project brief."""
+from __future__ import annotations
+
+from pathlib import Path
+
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
-from reportlab.platypus import (Flowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle)
-
-INK = colors.HexColor("#12263a")
-ACC = colors.HexColor("#0a7d6b")
-MUT = colors.HexColor("#5b6b7b")
-BG = colors.HexColor("#eef4f3")
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-class Diagram(Flowable):
-    """Five-pass pipeline architecture diagram."""
-    def __init__(self, w=170 * mm, h=34 * mm):
-        super().__init__()
-        self.width, self.height = w, h
-
-    def draw(self):
-        c = self.canv
-        stages = [("Ingest", "sniff format,\ndecode, quarantine"),
-                  ("Extract", "schema vote,\ndynamic PII dict"),
-                  ("Link", "EM Fellegi-Sunter,\ncannot-link clusters"),
-                  ("Privacy", "date shift, lattice\n+ Mondrian recode"),
-                  ("Rewrite+Verify", "format-preserving,\nresidual self-scan")]
-        n = len(stages)
-        gap = 5 * mm
-        bw = (self.width - gap * (n - 1)) / n
-        bh = 20 * mm
-        y = self.height - bh - 2 * mm
-        for i, (title, sub) in enumerate(stages):
-            x = i * (bw + gap)
-            c.setFillColor(BG)
-            c.setStrokeColor(ACC)
-            c.setLineWidth(1)
-            c.roundRect(x, y, bw, bh, 2 * mm, stroke=1, fill=1)
-            c.setFillColor(INK)
-            c.setFont("Helvetica-Bold", 8.3)
-            c.drawCentredString(x + bw / 2, y + bh - 7 * mm, title)
-            c.setFillColor(MUT)
-            c.setFont("Helvetica", 6.3)
-            for j, line in enumerate(sub.split("\n")):
-                c.drawCentredString(x + bw / 2, y + bh - 11 * mm - j * 3.1 * mm, line)
-            if i < n - 1:
-                c.setStrokeColor(ACC)
-                c.setLineWidth(1.3)
-                ay = y + bh / 2
-                c.line(x + bw + 0.6 * mm, ay, x + bw + gap - 0.6 * mm, ay)
-                c.setFillColor(ACC)
-                pth = c.beginPath()
-                pth.moveTo(x + bw + gap - 0.6 * mm, ay)
-                pth.lineTo(x + bw + gap - 2.4 * mm, ay + 1.1 * mm)
-                pth.lineTo(x + bw + gap - 2.4 * mm, ay - 1.1 * mm)
-                pth.close()
-                c.drawPath(pth, stroke=0, fill=1)
-        c.setFont("Helvetica-Oblique", 6.5)
-        c.setFillColor(MUT)
-        c.drawString(0, y - 4.5 * mm, "Input: CSV / TSV / nested JSON / FHIR R4 / text  (EN + Devanagari Hindi + Hinglish, 4 hospitals)")
-        c.drawRightString(self.width, y - 4.5 * mm, "Output: sanitized/  +  report.json  +  records.jsonl")
+INK = colors.HexColor("#17253A")
+ACCENT = colors.HexColor("#0F6B63")
+MUTED = colors.HexColor("#496078")
+LINE = colors.HexColor("#D7E4E3")
+PALE = colors.HexColor("#F1F7F6")
+BODY = ParagraphStyle("Body", fontName="Helvetica", fontSize=10.5, leading=14.5,
+                      textColor=INK, spaceAfter=8)
+SMALL = ParagraphStyle("Label", parent=BODY, fontSize=10, leading=13, textColor=MUTED)
+HEADING = ParagraphStyle("Heading", fontName="Helvetica-Bold", fontSize=13, leading=17,
+                         textColor=ACCENT, spaceBefore=8, spaceAfter=6)
+TITLE = ParagraphStyle("Title", fontName="Helvetica-Bold", fontSize=26, leading=30,
+                       textColor=INK, spaceAfter=6)
+TABLE = ParagraphStyle("Table text", parent=BODY, fontSize=10, leading=13, spaceAfter=0)
+TABLE_HEAD = ParagraphStyle("Table head", parent=TABLE, fontName="Helvetica-Bold",
+                            textColor=colors.white)
+FLOW = ParagraphStyle("Flow", parent=TABLE, fontName="Helvetica-Bold", textColor=ACCENT, alignment=1)
 
 
-def build(path="brief/StegnoZ_Project_Brief.pdf"):
-    doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
-                            topMargin=12 * mm, bottomMargin=11 * mm, title="StegnoZ Project Brief")
-    ss = getSampleStyleSheet()
-    H = ParagraphStyle("H", parent=ss["Heading2"], textColor=ACC, fontSize=10.5, spaceBefore=5,
-                       spaceAfter=2, fontName="Helvetica-Bold")
-    T = ParagraphStyle("T", parent=ss["Title"], textColor=INK, fontSize=17, spaceAfter=1, alignment=TA_LEFT)
-    sub = ParagraphStyle("sub", parent=ss["Normal"], textColor=MUT, fontSize=8.5, spaceAfter=5)
-    B = ParagraphStyle("B", parent=ss["Normal"], textColor=INK, fontSize=8.4, leading=11.2, spaceAfter=2)
-    LI = ParagraphStyle("LI", parent=B, leftIndent=8, bulletIndent=0)
-    e = []
+def grid(rows, widths, header=False):
+    table = Table(rows, colWidths=[width * mm for width in widths], hAlign="LEFT")
+    style = [
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("ROWBACKGROUNDS", (0, 0), (-1, -1), [PALE, colors.white]),
+        ("LINEBELOW", (0, 0), (-1, -1), 0.5, LINE),
+    ]
+    if header:
+        style.append(("BACKGROUND", (0, 0), (-1, 0), ACCENT))
+    table.setStyle(TableStyle(style))
+    return table
 
-    def bullets(items):
-        for it in items:
-            e.append(Paragraph("• " + it, LI))
 
-    e.append(Paragraph("StegnoZ", T))
-    e.append(Paragraph("An offline, CPU-only, LLM-free privacy firewall for multilingual hospital records "
-                       "&nbsp;·&nbsp; Track 3 · Secret Wards", sub))
+def footer(canvas, document):
+    canvas.setStrokeColor(LINE)
+    canvas.line(17 * mm, 15 * mm, 193 * mm, 15 * mm)
+    canvas.setFillColor(MUTED)
+    canvas.setFont("Helvetica", 10)
+    canvas.drawString(17 * mm, 10 * mm, "StegnoZ  |  Secret Wards")
+    canvas.drawRightString(193 * mm, 10 * mm, f"{document.page} / 2")
 
-    e.append(Paragraph("1. In one paragraph", H))
-    e.append(Paragraph(
-        "StegnoZ turns a chaotic, multi-hospital, multi-script hospital dump into a research-safe "
-        "release: it removes every direct and quasi-identifier, keeps every medical value exact, and "
-        "gives each real patient one stable pseudonym across all files and languages. The idea that "
-        "makes it more than a PII scrubber is that it reads the whole dump once to learn a run-only "
-        "dictionary of every identity, then resolves patients and <i>searches backwards from a privacy "
-        "objective</i> to the least-destructive generalisation that defeats the attacker — understanding "
-        "context (“C/O fever” vs “C/O Ramesh”, a dose <b>1-0-1</b> vs a phone) instead of "
-        "memorising the practice files, so it survives hidden datasets whose formats it has never seen.", B))
 
-    e.append(Paragraph("2. Architecture", H))
-    e.append(Diagram())
-    e.append(Spacer(1, 3 * mm))
-
-    e.append(Paragraph("3. How it works", H))
-    bullets([
-        "<b>Ingestion:</b> content-sniffed format detection (JSON behind a .csv, FHIR by resourceType), "
-        "UTF-8/BOM/UTF-16/cp1252 decoding, Devanagari-digit and zero-width normalisation; deeply nested, "
-        "truncated, corrupt, binary and empty files are quarantined with a PII-free reason, never copied out raw.",
-        "<b>Detection:</b> rules + gazetteers + our own Devanagari↔Latin transliteration across English, "
-        "Hindi and Hinglish; schema intelligence classifies every header/key by lexicon, fuzzy match, JSON/FHIR "
-        "context <i>and content voting</i>, so unseen columns are still understood. Meaning traps are handled: "
-        "doctors, wards, eponyms (Parkinson’s), ASHA workers, doses and <b>1-0-1</b> frequencies are kept; a "
-        "Philter-style safe-list catches canary names in no list.",
-        "<b>Linkage &amp; pseudonyms:</b> blocking by strong IDs and a cross-script phonetic key; Fellegi–Sunter "
-        "scoring whose m/u weights are <i>EM-estimated per run</i> (adapts to unseen data); constrained merge-center "
-        "clustering with cannot-link rules keeps same-name patients apart; uncertain links abstain. IDs are keyed "
-        "HMAC-SHA256 (HKDF-separated), non-reversible and secret-specific.",
-        "<b>Privacy layer:</b> per-patient secret date shifts (never small, never shared) keep stays exact and defeat "
-        "global-offset recovery; a Patient Exposure Graph drives an exhaustive k-anonymity lattice search for the "
-        "least-destructive feasible policy, with Mondrian local recoding of only the still-risky patients; age bands "
-        "always contain the true age.",
-        "<b>Security:</b> HKDF key separation, secret never printed/written, counter-only PII-free logs, no temp files, "
-        "no network; byte-identical output for the same secret, different pseudonyms/shifts for a different secret.",
-    ])
-
-    e.append(Paragraph("4. USP", H))
-    bullets([
-        "<b>Goal-driven Reverse Privacy Engine</b> — works backwards from a risk target to the minimum information loss, "
-        "instead of a fixed one-size policy.",
-        "<b>Patient Exposure Graph</b> — measures risk from each patient’s <i>combined</i> cross-hospital record, catching "
-        "rare clinical signatures k-anonymity alone misses.",
-        "<b>Context over memorisation</b> — content-based schema inference + EM linkage + dynamic dictionary keep recall "
-        "high on formats never seen in the practice data.",
-    ])
-
-    e.append(Paragraph("5. Privacy–utility trade-off (measured on the practice dataset)", H))
-    rows = [["Measure", "Value"],
-            ["Personal data leaked  (overall / Hindi / Hinglish)", "0.0%  /  0.0%  /  0.0%"],
-            ["Leaked on unseen-format stress test (content channel)", "0.0%   (0 canaries)"],
-            ["Medical values preserved", "100.0%  (4855 / 4855)"],
-            ["Linking precision / recall / F0.5  (false merges)", "1.00 / 0.86 / 0.97   (0)"],
-            ["Canaries leaked", "0 / 4"],
-            ["Re-identification policy", "5-yr bands + tehsil + PIN-prefix base; 19 at-risk patients coarsened"],
-            ["Run time / determinism", "~1.6 s / 200 files;  byte-identical on repeat, secret-sensitive"]]
-    tbl = Table(rows, colWidths=[112 * mm, 58 * mm])
-    tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), ACC), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"), ("TEXTCOLOR", (0, 1), (-1, -1), INK),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, BG]),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#c9d6d3")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("TOPPADDING", (0, 0), (-1, -1), 2.4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.4), ("LEFTPADDING", (0, 0), (-1, -1), 5)]))
-    e.append(tbl)
-    e.append(Spacer(1, 2 * mm))
-    e.append(Paragraph(
-        "<b>Why these settings:</b> the privacy score couples to utility (privacy is only fully credited above 40% "
-        "utility), and both the utility and privacy categories reward keeping information. So we generalise as little "
-        "as the risk target allows — the finest lattice node globally — and coarsen only the few patients whose combined "
-        "profile is genuinely singling-out (very old patients, tiny villages, rare diagnoses). We give up precise age and "
-        "village for those patients; we gain resistance to the targeted known-facts attack while keeping research "
-        "statistics (diagnosis mix, length-of-stay, lab medians) intact for everyone else.", B))
-
-    e.append(Paragraph("6. Known limitations", H))
-    bullets([
-        "Reported re-identification risk is a measured proxy, not a guarantee; an attacker with richer side knowledge "
-        "may still single out a genuinely unique clinical signature.",
-        "Detection is deliberately high-recall and can over-redact a rare name that collides with a medical term; "
-        "transliteration covers common Hindi/Hinglish morphology but not every regional spelling.",
-        "No learned model ships: a small self-trained CRF is a declared future add-on, gated on an ablation showing "
-        "recall gains without preserve loss.",
-    ])
-    e.append(Spacer(1, 1.5 * mm))
-    e.append(Paragraph("<b>Models declaration:</b> none. No LLM, no generative model, no pretrained transformer. All "
-                       "detection, transliteration, EM record linkage, lattice search and Mondrian recoding are original "
-                       "code. Runtime is the Python standard library only, fully offline.", sub))
-    doc.build(e)
-    print("wrote", path)
+def build(path=None):
+    destination = Path(path) if path else Path(__file__).with_name("StegnoZ_Project_Brief.pdf")
+    doc = SimpleDocTemplate(str(destination), pagesize=A4, leftMargin=17 * mm, rightMargin=17 * mm,
+                            topMargin=20 * mm, bottomMargin=21 * mm, title="StegnoZ Project Brief",
+                            author="Harshit Agarwalla and Shruti Talikoti")
+    story = [
+        Paragraph("YUGAANTAR DEVFORGE / TRACK 3 / SECRET WARDS", SMALL),
+        Paragraph("StegnoZ", TITLE),
+        Paragraph("<b>Team members</b> Harshit Agarwalla and Shruti Talikoti<br/>"
+                  "<b>Repository</b> <link href='https://github.com/itsmeshruti1/StegnoZ' color='#0F6B63'>"
+                  "github.com/itsmeshruti1/StegnoZ</link>", BODY),
+        Paragraph("An offline firewall for synthetic hospital records that resolves identities across English, Hindi, "
+                  "and Hinglish before deciding which details to generalize.", BODY),
+        Paragraph("Architecture", HEADING),
+        Paragraph("CSV, TSV, JSON, FHIR R4, and text notes", SMALL),
+        grid([[Paragraph(label, FLOW) for label in (
+            "Ingest", "&gt;", "Detect", "&gt;", "Link", "&gt;", "Generalize", "&gt;", "Verify &amp; export"
+        )]], [25, 9, 25, 9, 20, 9, 31, 9, 39]),
+        Spacer(1, 4 * mm),
+        Paragraph("Outputs  sanitized/  ·  report.json  ·  records.jsonl", SMALL),
+        Paragraph("How it works", HEADING),
+        Paragraph("<b>Ingestion.</b> Detects supported formats and encodings. Malformed inputs and attachments that "
+                  "cannot be scrubbed safely are quarantined.", BODY),
+        Paragraph("<b>Detection.</b> Schema rules, context, content voting, and a run-local dictionary distinguish "
+                  "personal identifiers from clinical text. Indic phonetic keys help match spellings across scripts.", BODY),
+        Paragraph("<b>Linkage.</b> Fellegi–Sunter scoring compares candidates after blocking. Explicit MRN namespaces "
+                  "and conflict checks constrain merges. HMAC-SHA256 keys pseudonyms and date shifts.", BODY),
+        Paragraph("<b>Privacy and verification.</b> The policy selects age bands, location granularity, and PIN masking. "
+                  "Each linked patient gets one date offset for representable dates. A final scan checks residual "
+                  "identifiers and validates rewritten FHIR references.", BODY),
+        Paragraph("What sets it apart", HEADING),
+        Paragraph("The policy search estimates utility loss before generalizing records. The export then measures "
+                  "risk separately on observed groups in the candidate release and reports when it exceeds the target.", BODY),
+        PageBreak(),
+        Paragraph("PRACTICE EVIDENCE", SMALL),
+        Paragraph("Privacy and utility", TITLE),
+        grid([
+            [Paragraph(label, TABLE_HEAD) for label in ("Measure", "Result on organizer practice data")],
+            [Paragraph(label, TABLE) for label in ("Visible annotated identifiers / planted canaries", "0 of 3,230 / 0 of 4")],
+            [Paragraph(label, TABLE) for label in ("Clinical values preserved", "4,855 of 4,855")],
+            [Paragraph(label, TABLE) for label in ("Pairwise precision / recall / F0.5", "1.00 / 0.87 / 0.97")],
+            [Paragraph(label, TABLE) for label in ("Manifest coverage for annotated exports", "773 of 773")],
+            [Paragraph(label, TABLE) for label in ("Observed candidates in classes below k=5", "65.65% · 5% target missed")],
+            [Paragraph(label, TABLE) for label in ("Windows run over 200 files", "About 2.1 seconds · 39 MB peak RSS")],
+        ], [93, 83], header=True),
+        Spacer(1, 4 * mm),
+        Paragraph("The observed-class figure is an internal proxy. It includes recognized released facts and unresolved "
+                  "records. The default run reports a target miss and publishes for challenge scoring. The optional "
+                  "<b>--strict-risk</b> mode withholds the candidate records.", BODY),
+        Paragraph("Security design", HEADING),
+        Paragraph("The organizer mounts inputs read-only. Outside the event, provision encrypted volumes for "
+                  "inputs and releases, with storage access separate from key access. RAKSHA_SECRET comes from the "
+                  "environment. Raw inputs and decoded intermediates are never copied to staging. The CLI stages "
+                  "verified bytes and logs counts and coarse failure reasons.", BODY),
+        Paragraph("Known limitations", HEADING),
+        Paragraph("Some unlabeled identifiers are ambiguous. A changed set of linkage evidence can change a "
+                  "pseudonym, and finite date offsets can coincide. Local tests exercised mixed date orders, "
+                  "multi-patient FHIR references, and hidden names in JSON keys. The hidden datasets and official "
+                  "Linux resource limits remain unverified.", BODY),
+        Paragraph("<b>Models declaration</b> None. The runtime is CPU-only and uses the Python standard library.", SMALL),
+    ]
+    doc.build(story, onFirstPage=footer, onLaterPages=footer)
 
 
 if __name__ == "__main__":

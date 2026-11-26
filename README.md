@@ -1,87 +1,36 @@
-# StegnoZ — an offline multilingual healthcare privacy firewall
+# StegnoZ
 
-StegnoZ is a privacy firewall for the **Secret Wards** challenge (Track 3). It ingests a chaotic
-dump of Indian hospital records — CSV, TSV, nested JSON, FHIR R4 bundles and free-text notes, in
-English, Devanagari Hindi and Hinglish, across four hospital systems and several encodings — and
-produces a research-safe release that removes every direct identifier and quasi-identifier while
-keeping every medically useful value intact, gives each real patient one stable pseudonym across
-all files and languages, and leaks nothing to any side channel. It runs **fully offline, on CPU,
-with no large language model, no generative model and no pretrained transformer of any size** — the
-entire detection, linkage and privacy stack is implemented from scratch in this repository using
-only the Python standard library.
-
-## Why it is hard, and how StegnoZ answers each trap
-
-The same patient appears as `Mohammad Arif`, `मोहम्मद आरिफ`, `Md. Arif` and `Arif sahab ka BP 150/90`,
-each with a different phone format, a half-written address and a different hospital ID. Names hide in
-JSON keys, CSV headers, file names, FHIR narratives and base64 attachments. Numbers that look like
-identifiers are really doses (`1-0-1`, `Dolo 650 BD x 5 days`). After submission an automated
-attacker holding a voter roll and a few known facts (a visit date, a rare disease, a length of stay)
-tries to re-identify every patient. StegnoZ is built around these traps rather than around the
-practice files, so it survives the hidden datasets that use column names, labels and formats never
-seen in practice.
-
-## Architecture
-
-A five-pass pipeline (see `raksha/`):
-
-1. **Ingestion** (`ingest.py`) — content-sniffed format detection (JSON behind a `.csv` extension is
-   still JSON; FHIR is detected by `resourceType`), robust decoding (UTF-8/BOM, UTF-16, cp1252),
-   Devanagari-digit and zero-width normalisation, and guards for deeply nested, truncated, corrupt,
-   binary or empty files, each **quarantined** with a PII-free reason rather than copied out raw.
-2. **Schema intelligence + extraction** (`extract.py`, `lexicon.py`) — every column header and JSON
-   key is classified into a field kind using a multilingual lexicon, fuzzy matching (misspelled
-   keys), JSON-parent and FHIR-resource context, **and content voting** over the column's values, so
-   an unseen header such as `EnrolmentRef` or `cell_contact` is still recognised from what it holds.
-   Unknown columns are scanned as free text, never passed through. A **run-only dynamic dictionary**
-   of every name and identifier seen anywhere is built here.
-3. **Identity resolution** (`link.py`, `translit.py`) — records are blocked by strong identifiers
-   and by a custom **Indic phonetic key** (cross-script, order-free), compared on discrete agreement
-   levels, and scored with **Fellegi–Sunter weights whose m/u probabilities are estimated per run by
-   EM** (no labels, deterministic), so the model adapts to unseen data instead of being hand-tuned.
-   **Constrained merge-center clustering** with cannot-link rules (different DOB, gender, relative or
-   incompatible age) keeps same-name patients apart and prevents transitive over-merging. Uncertain
-   links are left unresolved. Pseudonyms are keyed **HMAC-SHA256** (HKDF-separated keys), so they are
-   non-reversible and change with the secret.
-4. **Privacy layer** (`privacy.py`) — per-patient secret **date shifting** (never small, never
-   shared) keeps every interval and length-of-stay exact while defeating global-offset recovery. The
-   **Reverse Privacy Engine** builds a Patient Exposure Graph (each patient's pooled quasi-identifiers
-   and hospital/diagnosis trail), then searches the generalisation lattice (age band 5/10/20 ×
-   location tehsil/district × PIN prefix/drop) for the **least destructive node meeting the risk
-   target**, and applies **Mondrian-style local recoding** that coarsens only the patients still in
-   small or rare-diagnosis classes. Age bands always contain the true age.
-5. **Rewriting + self-correcting verification** (`sanitize.py`, `pipeline.py`) — format-preserving
-   rewriters for CSV, JSON, FHIR (references stay resolvable, narratives and base64 attachments are
-   scrubbed) and text. Hidden channels (base64, hex, `\u`, HTML entities, %-encoding, homoglyphs) are
-   decoded before detection and re-encoded after. A final **residual scan** re-reads every output,
-   re-redacts anything missed, and quarantines any file it cannot make safe.
-
-## Security design
-
-`RAKSHA_SECRET` is read once, expanded with HKDF into purpose-separated keys (pseudonyms, date
-shifts, file-name tags) and never printed, logged or written. Logs carry only counters and exception
-*types*. No temporary files are created; nothing touches the network. The same input and secret give
-byte-identical output; a different secret gives different pseudonyms and date shifts.
+StegnoZ is an offline, CPU-only privacy firewall for **Secret Wards**, Yugaantar DevForge Track 3. It is designed for the challenge's synthetic English, Hindi, and Hinglish hospital exports.
 
 ## Run it
 
-```bash
+Use Python 3.11 or later. The runtime uses only the standard library. Provide the organizer's key in RAKSHA_SECRET and use separate directories for input and output. The output directory must be empty or absent.
+
+~~~bash
+python -m pip install -r requirements.txt
 RAKSHA_SECRET=<secret> python main.py --input <input_dir> --output <output_dir>
-```
+~~~
 
-Outputs `sanitized/`, `report.json`, `records.jsonl` (and a development `audit.json`). Privacy
-targets live in `config/policy.yaml`. Development tools (`tools/attack_eval.py`, `tools/mutate_dataset.py`)
-are for local tuning only and never run in the submission.
+The organizer entry point stays in raksha.toml. Privacy settings are in config/policy.yaml. Use --policy to select a different policy file. The run produces UTF-8 sanitized/, report.json, records.jsonl, and an aggregate audit.json.
 
-## Models declaration
+The report records whether the candidate release met the configured risk target. By default a target miss is visible in the console, report, and audit, and the release is published for Track 3 scoring. Use --strict-risk to publish the counts and diagnostics while withholding the candidate records when the target is missed. In strict mode the CLI returns a nonzero exit status on a target miss.
 
-**None.** No LLM, no generative model, no pretrained transformer. All detection, transliteration, EM
-record linkage, k-anonymity lattice search and Mondrian recoding are original code in this repo.
+## Architecture
 
-## Known limitations
+1. **Ingestion.** stegnoz/ingest.py recognizes CSV, TSV, JSON, FHIR R4, and notes, sniffs supported encodings, and quarantines malformed or unsupported files. It checks file size before loading the contents and streams the required SHA-256 for oversized inputs.
+2. **Detection.** stegnoz/extract.py and stegnoz/sanitize.py combine multilingual schema classification, content voting, context rules, and a run-local dictionary. Clinical numeric fields and protected expressions are handled separately. Labeling can still identify a mistyped Aadhaar value whose checksum fails.
+3. **Linkage.** stegnoz/link.py blocks on identifiers and cross-script phonetic keys, scores candidates with Fellegi–Sunter, and checks conflicts before merging. MRN scope comes from a source or FHIR Identifier.system when provided. Shared contact details require corroboration. Pseudonyms and date shifts are keyed from identity evidence. Ambiguous records can be reported with a null patient.
+4. **Privacy policy.** stegnoz/privacy.py chooses age bands, location granularity, and PIN masking. Dates linked to the same identity use the same offset. The final risk proxy uses observed classes from recognized facts in the verified candidate release, including separately counted unresolved records. The organizer's hidden attacker is a separate evaluation.
+5. **Verification and export.** stegnoz/pipeline.py checks residual identifiers. FHIR references are rewritten together and checked for resolution. Unsupported attachment content and sensitive original record locators can cause the whole file to be quarantined. The CLI stages verified output privately and publishes report.json last.
 
-The re-identification risk reported in `audit.json` is a measured proxy, not a guarantee; a
-determined attacker with richer side knowledge than modelled may still single out a patient with a
-genuinely unique clinical signature. Free-text detection is high-recall by design and may over-redact
-a rare name that collides with a medical term. Transliteration covers common Hindi/Hinglish name
-morphology but not every regional spelling.
+## Security and operating limits
+
+The organizer provides read-only input and an environment secret. For a deployment outside the event sandbox, store source data and releases on encrypted volumes and control key access separately from storage access. The CLI never copies raw input into a staging directory. Decoded records and identity dictionaries exist in process memory, so access to the running process also needs protection. Only verified release files are staged. Quarantine entries contain a coarse reason and the organizer-required SHA-256.
+
+The same input and secret produce identical sanitized/ and records.jsonl on the tested practice run. Report timing and resource fields vary. Distinct patients can receive the same date offset because the configured range is finite. A changed set of identity evidence can also change a pseudonym. The heuristics can miss unusual identifiers or redact ambiguous terms, and the release risk proxy does not account for all auxiliary knowledge. Multi-patient FHIR bundles retain a whole-document manifest entry with a null patient.
+
+## Verification tools
+
+Run the local regressions with python -m pytest. Install requirements-dev.txt to run those tests or build the PDF. The organizer's validate_output.py, check_submission.py, and check_dev.py cover the contract and practice data. tools/attack_eval.py --output <output_dir> checks the manifest and prints the recorded risk proxy. It does not simulate the organizer's hidden attacks.
+
+**Models declaration** None. The runtime uses no LLM, generative model, or pretrained transformer.

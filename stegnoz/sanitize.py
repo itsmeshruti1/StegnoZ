@@ -23,7 +23,7 @@ from . import lexicon as L
 from . import patterns as P
 from . import privacy as PV
 from .extract import (DISTRICT_RE, KIN_RE, NAME_LABEL_RE, NAME_SEQ, TEHSIL_RE, VILLAGE_RE, clean_name,
-                      has_deva, looks_like_person)
+                      aadhaar_candidate, has_deva, looks_like_person, subject_names)
 from .translit import jaro_winkler, name_key
 from .util import _HOMO, _ZW
 
@@ -47,6 +47,8 @@ LOCALITY_RE = re.compile(r"\b(?:Mohalla|Mohallah|Mohala|Colony|Basti|Nagar|Secto
 LANDMARK_RE = re.compile(r"\b(?:near|opp\.?|opposite|behind|beside|next\s+to)\s+(?:the\s+)?(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})|[\u0900-\u097F]+(?:\s[\u0900-\u097F]+){0,2}\s+(?:के\s+पीछे|के\s+पास|के\s+सामने)")
 B64_RE = re.compile(r"(?<![A-Za-z0-9+/=])[A-Za-z0-9+/]{20,}={0,2}(?![A-Za-z0-9+/=])")
 HEX_RE = re.compile(r"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}){12,}(?![0-9A-Fa-f])")
+_COUNTER_RE = re.compile(r"(?i)\b(?:analy[sz]er[ -]+run[ -]+counter|run[ -]+counter)\s*[:=]\s*\d+\b")
+_STRUCTURED_AGE = re.compile(r"(?<![\d.])\d{1,3}(?:\.\d+)?")
 BIGNUM_RE = re.compile(r"(?<![\d.])\d{9,}(?![\d.])")
 
 
@@ -117,7 +119,7 @@ class Sanitizer:
                 spans.append((pr, s, e, rep))
 
         # protected clinical / organisational spans
-        for rx in (DOC_RE, ORG_RE, WARD_RE, ASHA_RE, EPONYM_RE):
+        for rx in (DOC_RE, ORG_RE, WARD_RE, ASHA_RE, EPONYM_RE, _COUNTER_RE):
             for m in rx.finditer(text):
                 add(100, m.start(), m.end(), None)
         for m in self.D.protect_re.finditer(text) if self.D.protect_re else ():
@@ -135,8 +137,7 @@ class Sanitizer:
                 add(95, m.start(), m.end(), tag)
                 self._count(ctx, tag)
         for m in P.AADHAAR.finditer(text):
-            d = P.norm_digits(m.group(0))
-            if d[0] not in "01":
+            if aadhaar_candidate(text, m):
                 add(94, m.start(), m.end(), "[AADHAAR]")
                 self._count(ctx, "[AADHAAR]")
         for m in P.PHONE.finditer(text):
@@ -165,8 +166,9 @@ class Sanitizer:
                 nid = P.id_norm(v)
                 add(92, m.start("id"), m.end("id"), self.D.id_to_psn.get(nid) or ctx.psn or "[ID]")
                 self._count(ctx, "[ID]")
-        for m in BIGNUM_RE.finditer(text):
-            add(90, m.start(), m.end(), "[NUMBER]")
+        if kind != "clinical":
+            for m in BIGNUM_RE.finditer(text):
+                add(90, m.start(), m.end(), "[NUMBER]")
 
         # address blocks
         for m in ADDRESS_LINE_RE.finditer(text):
@@ -220,8 +222,7 @@ class Sanitizer:
             add(78, start, m.end("h"), self._name_rep(None, " ".join(toks), ctx))
 
         # dates & ages
-        if ctx.shift is not None:
-            self._dates(text, ctx, add)
+        self._dates(text, ctx, add)
         self._ages(text, ctx, add)
 
         # dictionary names (any script)
@@ -233,7 +234,7 @@ class Sanitizer:
             role = self.is_name_word(w)
             if not role:
                 continue
-            if not has_deva(w) and not w[:1].isupper():
+            if kind not in {"key", "filename", "header"} and not has_deva(w) and not w[:1].isupper():
                 nxt = text[m.end():m.end() + 12].lower()
                 if not any(nxt.strip().startswith(h) for h in L.POST_HONORIFICS):
                     continue
@@ -252,7 +253,8 @@ class Sanitizer:
                         continue
                     tup = tuple(k for k in keys[i:i + n] if k)
                     if tup in self.D.village_keys and tup not in self.D.place_keys:
-                        if n == 1 and not has_deva(words[i].group(0)) and not words[i].group(0)[:1].isupper():
+                        if (kind not in {"key", "filename", "header"} and n == 1
+                                and not has_deva(words[i].group(0)) and not words[i].group(0)[:1].isupper()):
                             continue
                         add(83, words[i].start(), words[i + n - 1].end(), self.village_out(ctx))
                         self._count(ctx, "[VILLAGE]")
@@ -274,10 +276,20 @@ class Sanitizer:
                         continue
                     add(55, m.start(), m.end(), self._name_rep("other", m.group(0), ctx))
 
-        out = self._apply(text, spans)
         if kind is None:
-            out = self._unknown_names(out, ctx)
-        return out
+            for match in subject_names(text):
+                add(54, *match.span("name"), self._name_rep("patient", match.group("name"), ctx))
+        if (kind in {"header", "key", "filename"} and CAP_SEQ_RE.fullmatch(text)
+                and looks_like_person(text) and not self._is_safe_phrase(text)):
+            if kind != "key" or any(self.is_name_word(word) for word in text.split()):
+                add(54, 0, len(text), self._name_rep("other", text, ctx))
+        def count_generalization(priority):
+            if priority in (69, 70):
+                self._count(ctx, "DATE")
+            elif priority in (83, 84, 85):
+                self._count(ctx, "LOCATION")
+
+        return self._apply(text, spans, count_generalization)
 
     # ------------------------------------------------------------ pieces
     def _is_safe_phrase(self, s: str) -> bool:
@@ -329,18 +341,41 @@ class Sanitizer:
         self._count(ctx, "PERSON_NAME")
         return "[NAME]"
 
-    def _apply(self, text, spans):
+    def _apply(self, text, spans, on_change=None):
         spans.sort(key=lambda x: (-x[0], -(x[2] - x[1]), x[1]))
+        if not spans:
+            return text
+        boundaries = sorted({point for _, start, end, _ in spans for point in (start, end)})
+        positions = {point: i for i, point in enumerate(boundaries)}
+        occupied = [0] * (len(boundaries) + 1)
+
+        def prefix(i):
+            total = 0
+            while i:
+                total += occupied[i]
+                i -= i & -i
+            return total
+
         taken = []
-        for sp in spans:
-            pr, s, e, rep = sp
-            if any(not (e <= ts or s >= te) for _, ts, te, _ in taken):
+        # Process from highest to lowest priority, with logarithmic intersection queries.
+        # A Fenwick tree stores the number of occupied elementary intervals.
+        for span in spans:
+            _, start, end, _ = span
+            lo, hi = positions[start], positions[end]
+            if prefix(hi) != prefix(lo):
                 continue
-            taken.append(sp)
+            taken.append(span)
+            for interval in range(lo + 1, hi + 1):
+                i = interval
+                while i < len(occupied):
+                    occupied[i] += 1
+                    i += i & -i
         out, pos = [], 0
         for pr, s, e, rep in sorted(taken, key=lambda x: x[1]):
             out.append(text[pos:s])
             out.append(text[s:e] if rep is None else rep)
+            if on_change and rep is not None and rep != text[s:e]:
+                on_change(pr)
             pos = e
         out.append(text[pos:])
         res = "".join(out)
@@ -349,31 +384,18 @@ class Sanitizer:
         res = re.sub(r"(\[(?:NAME|RELATIVE|PATIENT)\])(?:[\s.]+\1)+", r"\1", res)
         return res
 
-    def _unknown_names(self, text, ctx):
-        return text
-
     def _dates(self, text, ctx, add):
-        sh = ctx.shift
-        for m in P.DATE_ISO.finditer(text):
-            rep, d = PV.shift_iso(m, sh)
-            if rep:
-                add(70, m.start(), m.end(), rep)
-        for m in P.DATE_NUM.finditer(text):
-            rep, d = PV.shift_numeric(m, sh, ctx.order)
-            if rep:
-                add(70, m.start(), m.end(), rep)
-        for m in P.DATE_DMONY.finditer(text):
-            rep, d = PV.shift_dmony(m, sh, ctx.ref_year)
-            if rep:
-                add(69, m.start(), m.end(), rep)
-        for m in P.DATE_MONDY.finditer(text):
-            rep, d = PV.shift_mondy(m, sh)
-            if rep:
-                add(69, m.start(), m.end(), rep)
-        for m in P.DATE_HINDI.finditer(text):
-            rep, d = PV.shift_hindi(m, sh, ctx.ref_year)
-            if rep:
-                add(69, m.start(), m.end(), rep)
+        for pattern, shift, priority in (
+            (P.DATE_ISO, lambda m: PV.shift_iso(m, ctx.shift or 0), 70),
+            (P.DATE_NUM, lambda m: PV.shift_numeric(m, ctx.shift or 0, ctx.order), 70),
+            (P.DATE_DMONY, lambda m: PV.shift_dmony(m, ctx.shift or 0, ctx.ref_year), 69),
+            (P.DATE_MONDY, lambda m: PV.shift_mondy(m, ctx.shift or 0), 69),
+            (P.DATE_HINDI, lambda m: PV.shift_hindi(m, ctx.shift or 0, ctx.ref_year), 69),
+        ):
+            for match in pattern.finditer(text):
+                rep, _ = shift(match)
+                if rep:
+                    add(priority, match.start(), match.end(), rep if ctx.shift is not None else "[DATE]")
 
     def _ages(self, text, ctx, add):
         for i, rx in enumerate(P.AGE_FORMS):
@@ -486,6 +508,8 @@ class Sanitizer:
             return (m.group(1) + " " if m else "") + "[RELATIVE]"
         if kind == "org" or kind == "doctor":
             return v if is_num else self._scrub_ids_only(s, ctx)
+        if kind == "clinical":
+            return v if is_num or re.fullmatch(r"\s*[+-]?\d+(?:\.\d+)?\s*", s) else self.scrub(s, ctx, "clinical")
         if kind in ("phone", "contact_value"):
             if kind == "contact_value" and "@" in s:
                 self._count(ctx, "[EMAIL]")
@@ -510,47 +534,49 @@ class Sanitizer:
             self._count(ctx, "[INSURANCE-ID]")
             return 0 if is_num else "[INSURANCE-ID]"
         if kind == "mrn":
-            if not re.search(r"\d{3,}", s):
+            if not P.id_norm(s):
                 return self.scrub(s, ctx)
             self._count(ctx, "[ID]")
             rep = self.D.id_to_psn.get(P.id_norm(s)) or ctx.psn or "[ID]"
             return 0 if is_num else rep
-        if kind == "address":
-            self._count(ctx, "[ADDRESS]")
-            return self.scrub_address(s, ctx) if not is_num else 0
-        if kind == "village":
-            self._count(ctx, "[VILLAGE]")
-            return self.village_out(ctx)
+        if kind in ("address", "village", "pin"):
+            if kind == "address":
+                out = self.scrub_address(s, ctx) if not is_num else 0
+            elif kind == "village":
+                out = self.village_out(ctx)
+            else:
+                out = PV.pin_out(s, ctx.pin)
+            if out != v:
+                self._count(ctx, f"[{kind.upper()}]")
+            return out
         if kind == "tehsil":
-            return v if ctx.loc == "tehsil" else (ctx.district or "[LOCATION]")
+            out = v if ctx.loc == "tehsil" else (ctx.district or "[LOCATION]")
+            if out != v:
+                self._count(ctx, "LOCATION")
+            return out
         if kind in ("district", "state", "gender", "relation"):
             return v
-        if kind == "pin":
-            self._count(ctx, "[PIN]")
-            return 0 if is_num else PV.pin_out(s, ctx.pin)
         if kind == "dob":
             self._count(ctx, "DOB")
             if ctx.shift is None:
                 return "[DOB]"
             out = self._shift_value(s, ctx)
             return out if out != s else "[DOB]"
-        if kind == "age":
-            m = re.search(r"\d{1,3}", P.norm_digits_keep(s))
-            if not m:
+        if kind in ("age", "age_sex"):
+            m = _STRUCTURED_AGE.search(P.norm_digits_keep(s))
+            if not m or re.match(r"\s*(?:[-–]\s*\d|\+)", s[m.end():]):
                 return v
-            band = PV.age_band(int(m.group(0)), ctx.age_w)
+            years = int(float(m.group()))
+            if not 0 <= years < 125:
+                return "[AGE]"
+            band = PV.age_band(years, ctx.age_w)
             self._count(ctx, "AGE")
             return band if is_num else s[:m.start()] + band + s[m.end():]
-        if kind == "age_sex":
-            m = re.search(r"\d{1,3}", P.norm_digits_keep(s))
-            if not m:
-                return v
-            self._count(ctx, "AGE")
-            return s[:m.start()] + PV.age_band(int(m.group(0)), ctx.age_w) + s[m.end():]
         if kind == "date":
-            if is_num or ctx.shift is None:
-                return v
-            return self._shift_value(s, ctx)
+            out = self._shift_value(s, ctx) if not is_num else "[DATE]"
+            if out != v:
+                self._count(ctx, "DATE")
+            return out
         if kind == "base64":
             return self._hidden_payloads(s, ctx) if not is_num else v
         if is_num:

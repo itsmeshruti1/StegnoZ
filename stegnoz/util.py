@@ -51,7 +51,7 @@ class Keys:
         return "PSN-" + code
 
     def shift_days(self, canonical: str, lo: int, hi: int) -> int:
-        """Per-patient offset in [-hi,-lo] U [lo,hi]: never small, never shared globally."""
+        """Per-patient offset in [-hi,-lo] U [lo,hi]: keyed per patient; offsets may collide."""
         d = self._mac(self.shift, canonical)
         n = int.from_bytes(d[:6], "big")
         span = hi - lo + 1
@@ -60,7 +60,7 @@ class Keys:
 
     def tag(self, text: str, length: int = 8) -> str:
         d = self._mac(self.name, text)
-        n = int.from_bytes(d[:8], "big")
+        n = int.from_bytes(d, "big")
         code = ""
         for _ in range(length):
             n, r = divmod(n, len(_ALPHABET))
@@ -125,8 +125,13 @@ def peak_rss_mb() -> float:
                             ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
             pmc = PMC()
             pmc.cb = ctypes.sizeof(PMC)
-            h = ctypes.windll.kernel32.GetCurrentProcess()
-            ctypes.windll.psapi.GetProcessMemoryInfo(h, ctypes.byref(pmc), pmc.cb)
+            get_process = ctypes.windll.kernel32.GetCurrentProcess
+            get_process.restype = wintypes.HANDLE
+            memory_info = ctypes.windll.psapi.GetProcessMemoryInfo
+            memory_info.argtypes = (wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD)
+            memory_info.restype = wintypes.BOOL
+            if not memory_info(get_process(), ctypes.byref(pmc), pmc.cb):
+                return 0.0
             return round(pmc.PeakWorkingSetSize / (1024.0 * 1024.0), 1)
         except Exception:
             return 0.0

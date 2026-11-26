@@ -151,12 +151,12 @@ def build(out_dir: Path, dest: Path):
     H.append('<div class="grid kpis">')
     kpis = [
         (f'{c["files_sanitized"]}<span style="font-size:14px;color:var(--mut)">/{c["files_total"]}</span>',
-         "files sanitised", f'{c["files_quarantined"]} quarantined safely', "ok"),
-        (f'{c["records_processed"]:,}', "records processed", f'{c["records_linked"]:,} linked to a patient', ""),
-        (f'{c["identifiers_detected"]:,}', "identifiers removed", "names, IDs, phones, locations", ""),
-        (f'{exp.get("patients", pol.get("patients", 0))}', "distinct patients", f'{pol.get("locally_recoded", 0)} extra-protected', ""),
+         "files sanitised", f'{c["files_quarantined"]} quarantined', "ok"),
+        (f'{c["records_processed"]:,}', "records processed", f'{c["records_linked"]:,} linked across records', ""),
+        (f'{c["identifiers_detected"]:,}', "identifiers detected", "names, IDs, phones, locations", ""),
+        (f'{exp.get("patients", pol.get("patients", 0))}', "profiles assessed", f'{pol.get("locally_recoded", 0)} local policy overrides', ""),
         (f'{report["timing"]["seconds"]}s', "run time", f'{report["resources"].get("peak_rss_mb", 0)} MB peak', "ok"),
-        (f'{ver.get("residual_quarantined", 0)}', "residual leaks after self-scan", f'{ver.get("residual_fixes", 0)} auto-corrected', "ok"),
+        (f'{ver.get("residual_quarantined", 0)}', "files held by verification", f'{ver.get("residual_fixes", 0)} auto-corrected', "ok"),
     ]
     for n, l, s, cls in kpis:
         H.append(f'<div class="card kpi"><div class="n">{n}</div><div class="l">{esc(l)}</div>'
@@ -166,11 +166,10 @@ def build(out_dir: Path, dest: Path):
     H.append('<div class="grid cards">')
 
     # PII removed by family
-    H.append('<div class="card"><h2>Personal data removed</h2>')
+    H.append('<div class="card"><h2>Identifier detections by category</h2>')
     for k, v in sorted(fam.items(), key=lambda kv: -kv[1]):
-        H.append(bar(k, v, fmax))
-    H.append('<div class="note">Counts are occurrences replaced in the release; clinical values '
-             '(doctors, doses, vitals, labs, diagnoses) are preserved and never counted here.</div></div>')
+        H.append(bar(k, v, fmax, " hits"))
+    H.append('<div class="note">Counts summarize matching rules. Multiple rules can match one occurrence.</div></div>')
 
     # Privacy-utility frontier
     H.append('<div class="card"><h2>Privacy–utility frontier</h2>')
@@ -179,8 +178,8 @@ def build(out_dir: Path, dest: Path):
     H.append(f'<div class="legend"><span><b style="background:var(--acc)"></b>applied policy '
              f'({esc(base[0]) if base else "?"}-yr bands, {esc(base[1]) if len(base)>1 else "?"}, PIN {esc(base[2]) if len(base)>2 else "?"})</span>'
              f'<span><b style="background:var(--mut)"></b>other candidates</span></div>')
-    H.append('<div class="note">The Reverse Privacy Engine searches every lattice node and applies the '
-             'least-destructive one meeting the risk target, then coarsens only the still-exposed patients.</div></div>')
+    H.append('<div class="note">The policy search compares candidates by modeled risk and utility. '
+             'The final observed risk check uses the candidate release.</div></div>')
 
     # K-anonymity distribution
     ka = exp.get("k_anonymity", {})
@@ -189,9 +188,9 @@ def build(out_dir: Path, dest: Path):
     colmap = {"1": "var(--bad)", "2-4": "var(--warn)", "5-9": "var(--acc)", "10+": "var(--good)"}
     labels = {"1": "unique (k=1)", "2-4": "k = 2–4", "5-9": "k = 5–9", "10+": "k ≥ 10"}
     for k in ("1", "2-4", "5-9", "10+"):
-        H.append(bar(labels[k], ka.get(k, 0), kmax, " patients", colmap[k]))
-    H.append('<div class="note">Equivalence classes over distinct patients on (age band, gender, location, PIN) '
-             'after generalisation, estimated at population scale. Lower k = more exposed.</div></div>')
+        H.append(bar(labels[k], ka.get(k, 0), kmax, " profiles", colmap[k]))
+    H.append('<div class="note">Observed groups based on age band, gender, location, PIN, '
+             'and other recognized facts in the candidate release. Unresolved records count separately.</div></div>')
 
     # Linkage quality
     H.append('<div class="card"><h2>Patient identity resolution</h2><table>')
@@ -212,7 +211,7 @@ def build(out_dir: Path, dest: Path):
             H.append(bar(f'{k} record(s)', cs.get(k, 0), cmax, " patients"))
         H.append('</div>')
     H.append('<div class="note">Cross-script Fellegi–Sunter linkage with EM-estimated weights; cannot-link '
-             'constraints keep same-name different people apart.</div></div>')
+             'constraints limit ambiguous merges.</div></div>')
 
     # Frontier table
     H.append('<div class="card"><h2>Candidate policies</h2><table>'
@@ -222,13 +221,15 @@ def build(out_dir: Path, dest: Path):
         H.append(f'<tr class="{"pick" if pick else ""}"><td>{esc(f["age_band"])} yr</td>'
                  f'<td>{esc(f["location"])}</td><td>{esc(f["pin"])}</td>'
                  f'<td class="n">{f["risk"]:.3f}</td><td class="n">{f["utility"]:.2f}</td></tr>')
-    H.append('</table><div class="note">Highlighted row is the applied base policy '
-             f'(target {"met" if pol.get("target_met") else "approached; rare-profile patients coarsened individually"}).</div></div>')
+    risk = exp.get("singling_out_risk")
+    target = pol.get("risk_target")
+    status = "target met" if pol.get("target_met") else "target missed"
+    detail = f"Candidate release {risk:.1%} · target {target:.1%} · {status}" if risk is not None and target is not None else "Final risk unavailable"
+    H.append(f'</table><div class="note">{esc(detail)}</div></div>')
 
     # Verification + quarantine
     H.append('<div class="card"><h2>Verification &amp; quarantine</h2><table>')
-    H.append(f'<tr><td>Residual PII after self-scan</td><td class="n">'
-             f'{"<span class=\"pill g\">clean</span>" if not ver.get("residual_quarantined") else ver.get("residual_quarantined")}</td></tr>')
+    H.append(f'<tr><td>Quarantined by residual scan</td><td class="n">{ver.get("residual_quarantined", 0)}</td></tr>')
     H.append(f'<tr><td>Auto-corrected sanitisation fixes</td><td class="n">{ver.get("residual_fixes", 0)}</td></tr>')
     for reason, n in sorted(qr.items()):
         H.append(f'<tr><td>Quarantined: {esc(reason.replace("_", " "))}</td><td class="n">{n}</td></tr>')
@@ -238,7 +239,7 @@ def build(out_dir: Path, dest: Path):
     H.append('</div>')  # cards
     H.append('<div class="foot">Generated from report.json + audit.json of a StegnoZ run. '
              'No large language model, generative model or pretrained transformer is used. '
-             'This page contains only aggregate counts and is safe to share.</div>')
+             'Figures summarize aggregate checks over the candidate release.</div>')
     H.append('</div></body></html>')
     out = "".join(H)
 

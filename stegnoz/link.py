@@ -32,7 +32,7 @@ U0 = {"name": [0.94, 0.05, 0.01], "dob": [0.98, 0.02], "rel": [0.95, 0.05], "age
 
 class Feat:
     __slots__ = ("idx", "names", "given", "toks", "rels", "dob", "ages", "gender", "strong", "villages",
-                 "has_full", "weak")
+                 "has_full", "weak", "local_ids")
 
     def __init__(self, idx, a):
         self.idx = idx
@@ -52,10 +52,16 @@ class Feat:
         self.ages = list(a["ages"])
         self.gender = set(a["gender"])
         self.strong = set()
-        for k in ("aadhaar", "abha", "phones", "emails", "pans", "insurance", "ids"):
+        for k in ("aadhaar", "abha", "phones", "emails", "pans", "insurance"):
             for v in a[k]:
                 if v:
                     self.strong.add(f"{k}:{v}")
+        self.local_ids = defaultdict(set)
+        for value in a["ids"]:
+            scopes = a.get("id_scopes", {}).get(value) or a.get("source") or {""}
+            for scope in scopes:
+                self.local_ids[scope].add(value)
+                self.strong.add(f"ids:{scope}:{value}")
         self.villages = {name_key(v.split()[0]) + "|" + "".join(name_key(x) for x in v.split()[1:])
                          for v in a["villages"] if v}
         self.weak = not self.strong and not self.has_full
@@ -152,6 +158,7 @@ class Cluster:
         self.ages = list(f.ages)
         self.gender = set(f.gender)
         self.strong = set(f.strong)
+        self.local_ids = {scope: set(values) for scope, values in f.local_ids.items()}
 
     def absorb(self, o: "Cluster"):
         self.members += o.members
@@ -161,6 +168,8 @@ class Cluster:
         self.ages += o.ages
         self.gender |= o.gender
         self.strong |= o.strong
+        for scope, values in o.local_ids.items():
+            self.local_ids.setdefault(scope, set()).update(values)
 
 
 def cannot_link(a: Cluster, b: Cluster) -> bool:
@@ -168,7 +177,13 @@ def cannot_link(a: Cluster, b: Cluster) -> bool:
         return True
     if a.dob and b.dob and not any(_swap_eq(x, y) for x in a.dob for y in b.dob):
         return True
-    if a.ages and b.ages:
+    shared = a.strong & b.strong
+    trusted = any(key.startswith(("ids:", "aadhaar:", "abha:", "pans:")) for key in shared)
+    if not trusted and any(
+            scope in b.local_ids and not (values & b.local_ids[scope])
+            for scope, values in a.local_ids.items()):
+        return True
+    if not trusted and a.ages and b.ages:
         ra = (min(a.ages), max(a.ages))
         rb = (min(b.ages), max(b.ages))
         if max(ra[1], rb[1]) - min(ra[0], rb[0]) > 4:
@@ -211,10 +226,21 @@ def resolve(units_attrs: list[dict], link_threshold: float = 6.0):
         if len(ids) < 2:
             continue
         if len(ids) > 400:
-            ids = ids[:400]
-        for i in range(len(ids)):
-            for j in range(i + 1, len(ids)):
-                pairs.add((ids[i], ids[j]))
+            # Separate common-name blocks by independent evidence. Within an exact
+            # evidence group, adjacent pairs connect every member in linear space.
+            evidence = defaultdict(list)
+            for i in ids:
+                f = feats[i]
+                key = (tuple(sorted(f.given)), tuple(sorted(f.dob)), tuple(sorted(f.gender)),
+                       tuple(sorted(name_key(r) for r in f.rels)))
+                if k.startswith("S") or f.dob or f.rels:
+                    evidence[key].append(i)
+            for members in evidence.values():
+                pairs.update(zip(members, members[1:]))
+            continue
+        for i, left in enumerate(ids):
+            for right in ids[i + 1:]:
+                pairs.add((left, right))
     pairs = sorted(pairs)
 
     vecs = []
@@ -228,7 +254,10 @@ def resolve(units_attrs: list[dict], link_threshold: float = 6.0):
     edges = []
     for (i, j, v, g, f) in info:
         w = weight(v, m, u)
-        strong = v.get("strong") == 1
+        shared = feats[i].strong & feats[j].strong
+        trusted = any(key.startswith(("ids:", "aadhaar:", "abha:", "pans:")) for key in shared)
+        corroborated = v.get("name", 0) >= 1 or v.get("dob") == 1
+        strong = bool(shared and (trusted or corroborated))
         # a shared unique identifier links when the names are compatible; a lone initial or a
         # single matching surname counts, but two differing full names do not (mis-keyed id).
         has_name_cmp = "name" in v

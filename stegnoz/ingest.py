@@ -29,6 +29,9 @@ class Unit:
     shift: int = 0
     canonical: str = ""
     generalized: bool = False
+    bearing: bool = False
+    out_loc: str | None = None
+    embedded: bool = False
 
 
 @dataclass
@@ -52,6 +55,8 @@ class Doc:
     out_rel: str | None = None
     out_bytes: bytes | None = None
     lineterm: str = "\n"
+    date_orders: list[str] = field(default_factory=list)
+    verified_path: Path | None = None
 
 
 _BINARY_MAGIC = [b"%PDF", b"\xff\xd8\xff", b"\x89PNG", b"GIF8", b"PK\x03\x04", b"\x1f\x8b",
@@ -137,39 +142,40 @@ def _sniff_delimiter(text: str, ext: str) -> str:
     first = text.split("\n", 1)[0]
     if ext == ".tsv":
         return "\t"
-    counts = {d: first.count(d) for d in [",", "\t", ";", "|"]}
-    best = max(counts, key=lambda d: (counts[d], d == ","))
-    return best if counts[best] > 0 else ","
+    counts = {d: len(next(csv.reader([first], delimiter=d), [])) for d in [",", "\t", ";", "|"]}
+    return max(counts, key=lambda d: (counts[d], d == ","))
 
 
-def _find_records(obj, base=""):
-    """Choose record units inside a JSON document: the largest array of objects within the
-    first three levels (e.g. /visits/3, /patients/0, /results/12). FHIR bundles and single
-    objects are one 'doc' record."""
-    if isinstance(obj, dict) and obj.get("resourceType") == "Bundle":
+def _find_records(obj):
+    """Find top-level record arrays without treating arrays inside a record as new patients."""
+    if isinstance(obj, dict) and any(
+            isinstance(obj.get(key), dict) for key in ("patient", "subject", "person")):
         return []
-    if isinstance(obj, list):
-        if obj and sum(isinstance(x, dict) for x in obj) >= max(1, len(obj) // 2):
-            return [f"{base}/{i}" for i, x in enumerate(obj) if isinstance(x, dict)]
-        return []
-    best: list = []
-    if isinstance(obj, dict):
-        frontier = [(base, obj, 0)]
-        while frontier:
-            b, o, d = frontier.pop(0)
-            if d > 3:
-                continue
-            for k in o:
-                v = o[k]
-                kk = str(k).replace("~", "~0").replace("/", "~1")
-                if isinstance(v, list) and v and sum(isinstance(x, dict) for x in v) >= max(1, len(v) // 2):
-                    ptrs = [f"{b}/{kk}/{i}" for i, x in enumerate(v) if isinstance(x, dict)]
-                    if len(ptrs) > len(best):
-                        best = ptrs
-                elif isinstance(v, dict):
-                    frontier.append((f"{b}/{kk}", v, d + 1))
-    return best
+    pending = [("", obj)]
+    records = []
+    while pending:
+        ptr, value = pending.pop()
+        if isinstance(value, list):
+            records.extend(f"{ptr}/{i}" for i, item in enumerate(value) if isinstance(item, dict))
+        elif isinstance(value, dict):
+            for key, item in reversed(list(value.items())):
+                if isinstance(item, (list, dict)):
+                    key = key.replace("~", "~0").replace("/", "~1")
+                    pending.append((f"{ptr}/{key}", item))
+    return records
 
+
+def _unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _reject_constant(value):
+    raise ValueError("non-JSON constant")
 
 _DATE_RE = re.compile(r"\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\b")
 
@@ -195,14 +201,20 @@ def infer_date_order(text: str, header_hint: str = "") -> str | None:
 
 
 def load(path: Path, rel: str) -> Doc:
-    raw = path.read_bytes()
+    with path.open("rb") as stream:
+        size = path.stat().st_size
+        if size > MAX_FILE_BYTES:
+            return Doc(rel, hashlib.file_digest(stream, "sha256").hexdigest(), size,
+                       status="quarantined", reason="file_too_large")
+        raw = stream.read(size + 1)
+        if len(raw) > MAX_FILE_BYTES:
+            stream.seek(0)
+            return Doc(rel, hashlib.file_digest(stream, "sha256").hexdigest(), len(raw),
+                       status="quarantined", reason="file_too_large")
     doc = Doc(rel=rel, sha=sha256(raw), size=len(raw))
     ext = path.suffix.lower()
     if len(raw) == 0 or not raw.strip():
         doc.status, doc.reason = "quarantined", "empty_file"
-        return doc
-    if len(raw) > MAX_FILE_BYTES:
-        doc.status, doc.reason = "quarantined", "file_too_large"
         return doc
     if any(raw.startswith(m) for m in _BINARY_MAGIC) or ext in {".pdf", ".jpg", ".jpeg", ".png", ".gif",
                                                                  ".doc", ".docx", ".xls", ".xlsx", ".zip",
@@ -227,27 +239,30 @@ def load(path: Path, rel: str) -> Doc:
             doc.status, doc.reason = "quarantined", "excessive_nesting"
             return doc
         try:
-            obj = json.loads(stripped)
+            obj = json.loads(stripped, object_pairs_hook=_unique_object, parse_constant=_reject_constant)
         except (ValueError, RecursionError):
-            if ext == ".json":
+            if ext == ".json" or stripped.startswith("{"):
                 doc.status, doc.reason = "quarantined", "malformed_json"
                 return doc
             obj = None
-        if obj is not None:
+        else:
             doc.obj = obj
-            doc.fmt = "fhir" if isinstance(obj, dict) and obj.get("resourceType") == "Bundle" else "json"
-            doc.record_ptrs = _find_records(obj)
+            doc.fmt = "fhir" if isinstance(obj, dict) and isinstance(obj.get("resourceType"), str) else "json"
+            doc.record_ptrs = _find_records(obj) if doc.fmt == "json" else []
             doc.text = text
             return doc
     if ext in {".csv", ".tsv"} or (ext not in {".txt", ".md", ".log", ".text", ".note", ""} and "\t" in stripped.split("\n", 1)[0]):
         delim = _sniff_delimiter(stripped, ext)
         try:
-            rows = list(csv.reader(io.StringIO(stripped, newline=""), delimiter=delim))
+            rows = list(csv.reader(io.StringIO(stripped, newline=""), delimiter=delim, strict=True))
         except csv.Error:
             doc.status, doc.reason = "quarantined", "malformed_csv"
             return doc
         if not rows:
             doc.status, doc.reason = "quarantined", "empty_file"
+            return doc
+        if any(len(row) != len(rows[0]) for row in rows[1:]):
+            doc.status, doc.reason = "quarantined", "ragged_csv"
             return doc
         doc.fmt, doc.delimiter = "csv", delim
         doc.header, doc.rows = rows[0], rows[1:]

@@ -39,7 +39,10 @@ def shift_numeric(m, shift: int, order: str):
     d = P.parse_numeric(a, b, y, order)
     if d is None:
         return None, None
-    nd = d + dt.timedelta(days=shift)
+    try:
+        nd = d + dt.timedelta(days=shift)
+    except OverflowError:
+        return "[DATE]", d
     ai, bi = P.to_int(a), P.to_int(b)
     # keep the component order actually used in the source
     if order == "mdy" and not (ai > 12 and bi <= 12):
@@ -57,7 +60,10 @@ def shift_iso(m, shift: int):
     d = P.make_date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
     if d is None:
         return None, None
-    nd = d + dt.timedelta(days=shift)
+    try:
+        nd = d + dt.timedelta(days=shift)
+    except OverflowError:
+        return "[DATE]", d
     return nd.isoformat(), d
 
 
@@ -69,7 +75,10 @@ def shift_dmony(m, shift: int, ref_year: int):
     d = P.make_date(int(year) if year else ref_year, mi, int(day))
     if d is None:
         return None, None
-    nd = d + dt.timedelta(days=shift)
+    try:
+        nd = d + dt.timedelta(days=shift)
+    except OverflowError:
+        return "[DATE]", d
     full = len(mon.rstrip(".")) > 3
     mname = P.MONTH_NAMES[nd.month - 1] if full else P.MONTH_NAMES[nd.month - 1][:3]
     if mon.isupper():
@@ -90,7 +99,10 @@ def shift_mondy(m, shift: int):
     d = P.make_date(int(year), mi, int(day)) if mi else None
     if d is None:
         return None, None
-    nd = d + dt.timedelta(days=shift)
+    try:
+        nd = d + dt.timedelta(days=shift)
+    except OverflowError:
+        return "[DATE]", d
     full = len(mon.rstrip(".")) > 3
     mname = P.MONTH_NAMES[nd.month - 1] if full else P.MONTH_NAMES[nd.month - 1][:3]
     comma = "," if "," in m.group(0) else ""
@@ -103,7 +115,10 @@ def shift_hindi(m, shift: int, ref_year: int):
     d = P.make_date(P.to_int(year) if year else ref_year, mi, P.to_int(day)) if mi else None
     if d is None:
         return None, None
-    nd = d + dt.timedelta(days=shift)
+    try:
+        nd = d + dt.timedelta(days=shift)
+    except OverflowError:
+        return "[DATE]", d
     inv = {v: k for k, v in P.HINDI_MONTHS.items()}
     out = f"{nd.day} {inv[nd.month]}"
     if year:
@@ -204,13 +219,16 @@ def choose_policy(profiles, cfg):
     base = (best["age_band"], best["location"], best["pin"])
     # Mondrian-style local recoding: lift only patients still in small / rare classes
     overrides = {}
-    _, _, classes = evaluate_node(profiles, base, k_target, pop_factor, dx_counts, rare_dx)
+    class_sizes = {
+        (f["age_band"], f["location"], f["pin"]): Counter(
+            _qi(p, f["age_band"], f["location"], f["pin"]) for p in profiles.values()
+        ) for f in frontier
+    }
     for psn, p in profiles.items():
         node = list(base)
         rare = any(dx_counts[d] <= rare_dx for d in p["dx"])
         for _ in range(4):
-            cls = classes.get(_qi(p, *node), 0) if tuple(node) == base else \
-                sum(1 for q in profiles.values() if _qi(q, *node) == _qi(p, *node))
+            cls = class_sizes[tuple(node)][_qi(p, *node)]
             small = cls * pop_factor < k_target or (rare and cls < k_target)
             if not small:
                 break

@@ -4,16 +4,16 @@
 # (age band 5/10/20 x location tehsil/district x PIN prefix/drop) and picks the least
 # destructive node whose measured singling-out risk is <= max_singling_out, then applies
 # Mondrian-style local recoding only to patients still in small or rare classes.
-k_target: 5                  # minimum people sharing a quasi-identifier class in the population
-population_factor: 5         # registry population is ~4-5x the patient count (attack model)
-max_singling_out: 0.05       # risk objective: share of patients in classes smaller than k_target
+k_target: 5                  # minimum observed class size for the final release check
+population_factor: 5         # population estimate used only during candidate policy selection
+max_singling_out: 0.05       # maximum share in observed classes smaller than k_target
 rare_dx_max_patients: 3      # a diagnosis shared by <= this many patients is a rare clinical signature
 
 # Date shifting: every date of one patient moves by the same secret offset, so stays and
-# intervals are exact; offsets are never small and never shared across patients.
+# intervals are exact when linked and representable; offsets can coincide.
 date_shift_min_days: 21
 date_shift_max_days: 180
 
 # Linkage: Fellegi-Sunter log2 weight (EM-estimated m/u) needed to link two records that
-# share no strong identifier. Strong identifiers always need a compatible name and no conflict.
+# share no strong identifier. Shared contacts require corroboration. Conflicting records stay separate.
 link_threshold: 6.0

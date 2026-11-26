@@ -1,6 +1,1 @@
-# RakshaMed runs on the Python standard library alone: no third-party packages are
-# required, no models are downloaded, and nothing contacts the network at run time.
-# (Detection, transliteration, EM record linkage, k-anonymity lattice search and
-#  Mondrian recoding are all implemented in-repo under raksha/.)
-#
-# No LLM, no generative model, no pretrained transformer of any size is used.
+# Track 3 runtime uses the Python 3.11+ standard library.

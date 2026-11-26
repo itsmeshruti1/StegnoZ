@@ -210,7 +210,7 @@ def classify_column(header: str, values: list[str]) -> str | None:
     h = str(header)
     # clinical / coding / transactional columns are not identifiers: never content-vote them to PII
     if kind is None and _KEEP_HEADERS.search(h) and not re.search(r"(?i)name|patient|phone|mobile|aadha", h):
-        return None
+        return "clinical"
     vals = [v for v in values if v and str(v).strip()][:200]
     if kind not in (None, "maybe_name"):
         return kind
@@ -226,7 +226,7 @@ def classify_column(header: str, values: list[str]) -> str | None:
             score["abha"] += 1
         elif P.PAN.fullmatch(s):
             score["pan"] += 1
-        elif P.AADHAAR.fullmatch(s) or P.AADHAAR_MASKED.fullmatch(s):
+        elif (P.AADHAAR.fullmatch(s) and P.verhoeff_ok(P.norm_digits(s))) or P.AADHAAR_MASKED.fullmatch(s):
             score["aadhaar"] += 1
         elif P.PHONE.fullmatch(s) or P.PHONE_MASKED.fullmatch(s):
             score["phone"] += 1
@@ -263,6 +263,28 @@ KIN_RE = re.compile(rf"(?P<rel>(?<![A-Za-z])(?:{_KIN})|(?:{_KIN_DEVA}))\s*[:\-�
 DOB_RE = re.compile(r"(?i:DOB|D\.O\.B\.?|Date\s+of\s+Birth|Birth\s*Date|जन्म\s*तिथि|Janm\s*Tithi)\s*[:\-]?\s*(?P<d>[0-9०-९]{1,4}[/.\-][0-9०-९]{1,2}[/.\-][0-9०-९]{2,4})")
 ID_LABEL_RE = re.compile(r"(?i:UHID|MRN|MR\s*No|Reg(?:istration)?\.?\s*No|IPD\s*No|IP\s*No|OPD\s*No|CR\s*No|Patient\s*ID|Hosp(?:ital)?\.?\s*No|Case\s*No|Adm(?:ission)?\.?\s*No|पंजीकरण\s*सं|आईपीडी\s*सं)\.?\s*[:\-#]?\s*(?P<id>[A-Za-z0-9][A-Za-z0-9/\-]{3,})")
 VILLAGE_RE = re.compile(r"(?:(?<![A-Za-z])(?:Vill(?:age)?\.?|Gram|Gaon|Mauza)\s*[:\-]?\s+|(?:ग्राम|गाँव|गांव)\s*[:\-]?\s*)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)){0,2})")
+AADHAAR_LABEL_RE = re.compile(r"(?i)(?:aadha?a?r|आधार)\s*(?:(?:no|number)\.?\s*)?[:#-]?\s*$")
+TEXT_SUBJECT_RE = re.compile(
+    r"(?m)(?<!\w)(?P<name>[A-Z][a-z'’]+(?:[ \t]+[A-Z][a-z'’]+){1,2})[ \t]+"
+    r"(?i:returned|reported|arrived|presented|attended|visited|complained|was admitted|was discharged)\b"
+)
+FULL_DATE_PATTERNS = (P.DATE_ISO, P.DATE_NUM, P.DATE_DMONY, P.DATE_MONDY, P.DATE_HINDI)
+
+
+def subject_names(text):
+    for match in TEXT_SUBJECT_RE.finditer(text):
+        tokens = match.group("name").split()
+        if not any(token.casefold() in L.MEDICAL_WORDS | L.COMMON_EN | L.HINGLISH_MEDICAL for token in tokens):
+            yield match
+
+
+def aadhaar_candidate(text, match):
+    digits = P.norm_digits(match.group())
+    return digits[0] not in "01" and (
+        P.verhoeff_ok(digits) or bool(AADHAAR_LABEL_RE.search(text[max(0, match.start() - 35):match.start()]))
+    )
+
+
 TEHSIL_RE = re.compile(r"(?:(?<![A-Za-z])(?:Tehsil|Tahsil|Teh\.)\s*[:\-]?\s+|तहसील\s*[:\-]?\s*)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+))?)")
 DISTRICT_RE = re.compile(r"(?:(?<![A-Za-z])(?:Distt?\.?|District|Dist\.)\s*[:\-]?\s+|(?:जिला|ज़िला)\s*[:\-]?\s*)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+))?)")
 GENDER_RE = re.compile(r"(?:/\s*|\b)(?P<g>M|F|Male|Female|पुरुष|महिला)\b")
@@ -293,7 +315,7 @@ def new_attrs() -> dict:
     return {"names": [], "relatives": [], "dob": set(), "ages": [], "gender": set(), "phones": set(),
             "aadhaar": set(), "abha": set(), "ids": set(), "emails": set(), "pans": set(), "insurance": set(),
             "villages": [], "tehsils": [], "districts": [], "pins": set(), "cand_ids": set(), "cores": set(),
-            "cand_cores": {}}
+            "cand_cores": {}, "id_scopes": {}, "source": set(), "event_dates": set()}
 
 
 def norm_gender(v: str) -> str | None:
@@ -331,13 +353,13 @@ def add_value(attrs: dict, kind: str, value, date_order: str = "dmy"):
         if looks_like_person(sval):
             tgt = "relatives" if kind == "maybe_relative" else "names"
             attrs[tgt].append(clean_name(sval) if not has_deva(sval) else sval)
-    elif kind == "dob":
+    elif kind in ("dob", "date"):
         d = parse_any_date(sval, date_order)
         if d:
-            attrs["dob"].add(d.isoformat())
+            attrs["dob" if kind == "dob" else "event_dates"].add(d.isoformat())
     elif kind == "age":
         m = re.search(r"\d{1,3}", P.norm_digits_keep(sval))
-        if m and 0 < int(m.group(0)) < 125:
+        if m and 0 <= int(m.group(0)) < 125:
             attrs["ages"].append(int(m.group(0)))
     elif kind == "age_sex":
         m = re.search(r"(\d{1,3})", P.norm_digits_keep(sval))
@@ -372,7 +394,7 @@ def add_value(attrs: dict, kind: str, value, date_order: str = "dmy"):
     elif kind == "abha_addr":
         attrs["emails"].add(sval.lower())
     elif kind == "mrn":
-        if re.search(r"\d{3,}", sval):
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 /.-]{2,}", sval) and any(c.isdigit() for c in sval):
             attrs["ids"].add(P.id_norm(sval))
             attrs["cores"].add(P.id_core(sval))
     elif kind == "pan":
@@ -410,6 +432,13 @@ def extract_text(attrs: dict, text: str, date_order: str = "dmy", address: bool 
             nm = clean_name(m.group("n"))
             if nm:
                 attrs["names"].append(nm)
+        for match in subject_names(text):
+            attrs["names"].append(match.group("name"))
+        for pattern in FULL_DATE_PATTERNS:
+            for match in pattern.finditer(text):
+                d = parse_any_date(match.group(), date_order)
+                if d:
+                    attrs["event_dates"].add(d.isoformat())
         for m in DOB_RE.finditer(text):
             d = parse_any_date(m.group("d"), date_order)
             if d:
@@ -440,7 +469,7 @@ def extract_text(attrs: dict, text: str, date_order: str = "dmy", address: bool 
             attrs["abha"].add(P.norm_digits(m.group(0)))
         for m in P.AADHAAR.finditer(text):
             d = P.norm_digits(m.group(0))
-            if d[0] not in "01":
+            if aadhaar_candidate(text, m):
                 attrs["aadhaar"].add(d)
         for m in P.PAN.finditer(text):
             attrs["pans"].add(m.group(0))
