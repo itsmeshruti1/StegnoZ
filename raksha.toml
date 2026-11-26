@@ -1,7 +1,7 @@
 [submission]
 name  = "stegnoz"
 setup = "pip install -r requirements.txt"
-run   = "python main.py --input {input} --output {output}"
+run   = "python main.py --input {input} --output {output} --allow-risk-miss"
 
 [submission.env]
 RAKSHA_POLICY = "config/policy.yaml"

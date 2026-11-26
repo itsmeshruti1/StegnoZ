@@ -1,0 +1,2 @@
+*.pdf binary
+stegnoz/extract.py whitespace=cr-at-eol

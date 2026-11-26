@@ -1,0 +1,128 @@
+{
+  "schema": "stegnoz-audit/1",
+  "policy": {
+    "base": [
+      5,
+      "tehsil",
+      "prefix3"
+    ],
+    "frontier": [
+      {
+        "age_band": 5,
+        "location": "tehsil",
+        "pin": "prefix3",
+        "utility": 0.8000000000000002,
+        "risk": 0.5871559633027523,
+        "risk_floor": 0.5871559633027523,
+        "patients": 109,
+        "valid": true
+      }
+    ],
+    "target_met": false,
+    "selected_risk": 0.5871559633027523,
+    "patients": 109,
+    "risk_metric": "observed_release_classes",
+    "locally_recoded": 0,
+    "search_exhausted": false,
+    "stop_reason": "preserved_facts_lower_bound",
+    "risk_target": 0.05
+  },
+  "linkage": {
+    "candidate_pairs": 7373,
+    "accepted_edges": 5419,
+    "rejected_merges": 98,
+    "fragment_links": 2,
+    "clusters": 71,
+    "em_m": {
+      "name": [
+        0.014,
+        0.054,
+        0.932
+      ],
+      "dob": [
+        0.01,
+        0.99
+      ],
+      "rel": [
+        0.01,
+        0.99
+      ],
+      "age": [
+        0.01,
+        0.99
+      ],
+      "village": [
+        0.01,
+        0.99
+      ],
+      "gender": [
+        0.01,
+        0.99
+      ],
+      "strong": [
+        0.01,
+        0.99
+      ]
+    },
+    "em_u": {
+      "name": [
+        0.0075,
+        0.0193,
+        0.9733
+      ],
+      "dob": [
+        0.5662,
+        0.4338
+      ],
+      "rel": [
+        0.3421,
+        0.6579
+      ],
+      "age": [
+        0.3543,
+        0.6457
+      ],
+      "village": [
+        0.338,
+        0.662
+      ],
+      "gender": [
+        0.0017,
+        0.99
+      ],
+      "strong": [
+        0.5082,
+        0.4918
+      ]
+    }
+  },
+  "verification": {
+    "residual_fixes": 0,
+    "residual_quarantined": 0
+  },
+  "quarantine_reasons": {
+    "empty_file": 1,
+    "excessive_nesting": 1,
+    "malformed_json": 1,
+    "unsupported_format": 3
+  },
+  "exposure": {
+    "patients": 109,
+    "k_anonymity": {
+      "1": 64,
+      "2-4": 0,
+      "5-9": 0,
+      "10+": 45
+    },
+    "cluster_sizes": {
+      "1": 22,
+      "2-3": 1,
+      "4-6": 3,
+      "7+": 45
+    },
+    "unlinked_records": 38,
+    "singling_out_risk": 0.5871559633027523,
+    "preserved_facts_risk_floor": 0.5871559633027523,
+    "k_target": 5
+  }
+}

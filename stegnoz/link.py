@@ -180,7 +180,7 @@ def cannot_link(a: Cluster, b: Cluster) -> bool:
     shared = a.strong & b.strong
     trusted = any(key.startswith(("ids:", "aadhaar:", "abha:", "pans:")) for key in shared)
     if not trusted and any(
-            scope in b.local_ids and not (values & b.local_ids[scope])
+            scope and scope in b.local_ids and not (values & b.local_ids[scope])
             for scope, values in a.local_ids.items()):
         return True
     if not trusted and a.ages and b.ages:

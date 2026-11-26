@@ -63,7 +63,11 @@ def main() -> int:
     ap.add_argument("--input", required=True)
     ap.add_argument("--output", required=True)
     ap.add_argument("--policy", default=os.environ.get("RAKSHA_POLICY", str(HERE / "config" / "policy.yaml")))
-    ap.add_argument("--strict-risk", action="store_true", help="withhold the release if the final risk proxy exceeds the policy target")
+    risk = ap.add_mutually_exclusive_group()
+    risk.add_argument("--strict-risk", dest="strict_risk", action="store_true", default=True,
+                      help="withhold a release that misses the risk target (default)")
+    risk.add_argument("--allow-risk-miss", dest="strict_risk", action="store_false",
+                      help="explicitly publish the best candidate even if the risk target is missed (challenge scoring)")
     a = ap.parse_args()
 
     def _unquote(s: str) -> str:

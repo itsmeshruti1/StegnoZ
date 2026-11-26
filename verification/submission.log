@@ -1,0 +1,26 @@
+
+Secret Wards pre-submit check: /tmp/stegnoz-verify-1abocex1/project
+
+1) Repository files
+  ✅ raksha.toml found at the root
+  ✅ team name: stegnoz
+  ✅ run: python main.py --input {input} --output {output} --allow-risk-miss
+  ✅ setup: pip install -r requirements.txt
+  ✅ README.md found (871 words)
+  ✅ Project Brief PDF found: brief/StegnoZ_Project_Brief.pdf
+  ✅ requirements.txt has no LLM / hosted-AI packages
+  ✅ config/policy.yaml found
+
+2) Running your system on the practice data (3 runs)
+  ✅ exit code 0 in 14.0s
+  ✅ output contract: CONTRACT OK
+  ✅ same secret twice → identical sanitized/ and records.jsonl
+  ✅ different secret → different output (pseudonyms / date shifts are keyed)
+  ✅ RAKSHA_SECRET is never written to output or logs
+  ✅ input folder left unchanged
+
+   Next: python3 check_dev.py --output <your output>  shows how GOOD the output is.
+   Event day has NO internet: also test with your network switched off.
+
+READY TO SUBMIT
+Submit: your GitHub repo link + your 2-page Project Brief PDF, before the deadline.

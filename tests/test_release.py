@@ -66,6 +66,21 @@ def test_literal_name_used_as_json_key_without_roster(tmp_path):
     assert {record["diagnosis"] for record in data.values()} == {"typhoid", "stable"}
 
 
+def test_clinician_alias_preserves_doctor_and_postal_alias_masks_pin(tmp_path):
+    output, _, _ = run_pipeline(tmp_path, {
+        "visit.json": {"patient_name": "Quenby Tarlowe", "post_idx": 226001,
+                       "attending_clinician": "Dr. Ramesh Verma", "result": 98},
+        "lab.csv": "Patient Name,Ordering Clinician,Postal Index,Result\n"
+                   "Quenby Tarlowe,Dr. Ramesh Verma,226001,98\n",
+    })
+    data = json.loads(released(output, "visit.json"))
+    assert data["post_idx"] == "226***"
+    assert data["attending_clinician"] == "Dr. Ramesh Verma" and data["result"] == 98
+    row = list(csv.reader(released(output, "lab.csv").splitlines()))[1]
+    assert row[1:] == ["Dr. Ramesh Verma", "226***", "98"]
+    assert "Quenby Tarlowe" not in released(output, "visit.json")
+
+
 def test_header_pii_and_manifest_coverage(tmp_path):
     output, report, records = run_pipeline(tmp_path, {
         "result.csv": "Patient Name: Ramesh Verma,UHID: QA-78421,Result\n,,98\n",
@@ -188,7 +203,7 @@ def test_cli_requires_secret_separate_paths_and_empty_destination(tmp_path):
     env["RAKSHA_SECRET"] = SECRET
     assert run(tmp_path / "missing", out).returncode != 0 and not out.exists()
     assert run(source, source / "out").returncode != 0
-    assert run(source, out).returncode == 0
+    assert run(source, out, "--allow-risk-miss").returncode == 0
     report = (out / "report.json").read_bytes()
     assert run(source, out).returncode != 0
     assert (out / "report.json").read_bytes() == report

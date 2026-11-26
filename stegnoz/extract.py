@@ -124,7 +124,7 @@ def classify_key(key, parents: tuple = (), rtype: str | None = None) -> str | No
         return "email"
     if toks & {"dob", "birth", "janm"}:
         return "dob"
-    if toks & {"pin", "pincode", "zip", "postal"}:
+    if toks & {"pin", "pincode", "zip", "postal"} or ("post" in toks and toks & {"idx", "index", "code"}):
         return "pin"
     if toks & {"village", "gaon", "gram", "vill", "city", "town"}:
         return "village"
@@ -141,7 +141,7 @@ def classify_key(key, parents: tuple = (), rtype: str | None = None) -> str | No
     if ("name" in toks or "naam" in toks) and toks & {"father", "husband", "guardian", "relative", "spouse",
                                                        "mother", "pita", "pati", "attendant", "kin"}:
         return "relative"
-    if toks & {"doctor", "consultant", "physician", "surgeon"} or k_noparen.startswith("dr"):
+    if toks & {"doctor", "consultant", "physician", "surgeon", "clinician"} or k_noparen.startswith("dr"):
         return "doctor"
     if ("name" in toks or "naam" in toks):
         if toks & {"drug", "test", "hospital", "facility", "lab", "doctor", "department", "package", "panel",
@@ -516,6 +516,10 @@ def name_sim(a: str, b: str) -> tuple[float, float]:
     ta, tb = name_tokens(a), name_tokens(b)
     if not ta or not tb:
         return 0.0, 0.0
+    # Honorific filtering must not downgrade an otherwise complete matching name
+    # merely because one component (e.g. Mohammad or Kumar) is common.
+    if len(ta) >= 2 and sorted(ta) == sorted(tb) and any(t not in _GENERIC_KEYS for t in ta):
+        return 1.0, 1.0
     ga, gb = [t for t in ta if t not in _GENERIC_KEYS] or ta, [t for t in tb if t not in _GENERIC_KEYS] or tb
     given = max(jaro_winkler(ga[0], x) for x in gb[:2])
     # token-set: every token of the shorter name must match some token of the longer

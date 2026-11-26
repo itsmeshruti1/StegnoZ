@@ -1,22 +1,13 @@
-"""Privacy layer: date shifting, truthful generalisation and the goal-driven policy search.
+"""Date shifts, truthful age bands and selection on verified candidate releases.
 
-Reverse Privacy Engine
-* Generalisation lattice: age band width {5, 10, 20} x location {village->tehsil, district}
-  x PIN {3-digit prefix, removed}.  (Village itself is always a direct identifier here, so the
-  most precise location we release is the tehsil.)  The lattice is tiny, so the search is
-  exhaustive - the chosen node is provably the least-loss node that meets the risk target.
-* Risk is measured on the Patient Exposure Graph: every pseudonymous patient's pooled
-  quasi-identifiers across all linked records (age, gender, location, PIN, hospital trail, rare
-  diagnoses).  Equivalence classes are counted over distinct *patients*, not rows.
-* Mondrian-style local recoding: patients who are still in small or rare classes under the chosen
-  base node are pushed one lattice level up individually - everybody else keeps the precise
-  version.  Bands always contain the true age.
+The evaluator supplied by Pipeline uses the same observed signatures as the final
+release check. No population multiplier or hypothetical local recoding is used.
+Medical values and per-patient date intervals are unchanged across candidates.
 """
 from __future__ import annotations
 
 import datetime as dt
-import math
-from collections import Counter, defaultdict
+from collections import Counter
 
 from . import patterns as P
 
@@ -150,100 +141,49 @@ def _mode(xs):
     return sorted(c.items(), key=lambda kv: (-kv[1], str(kv[0])))[0][0]
 
 
-def build_profiles(units, docs_of_unit):
-    """Pool each patient's quasi-identifiers across all linked records (Patient Exposure Graph)."""
-    prof = defaultdict(lambda: {"ages": [], "gender": [], "tehsil": [], "district": [], "pin": [],
-                                "trail": set(), "dx": set(), "records": 0})
-    for u, doc in zip(units, docs_of_unit):
-        if not u.psn:
-            continue
-        p = prof[u.psn]
-        a = u.attrs
-        p["ages"] += a["ages"]
-        p["gender"] += sorted(a["gender"])
-        p["tehsil"] += [t.lower() for t in a["tehsils"]]
-        p["district"] += [t.lower() for t in a["districts"]]
-        p["pin"] += sorted(a["pins"])
-        p["trail"].add(doc.rel.split("/")[-1].split("_")[0].lower())
-        p["dx"] |= set(a.get("dx", ()))
-        p["records"] += 1
-    out = {}
-    for psn in sorted(prof):
-        p = prof[psn]
-        out[psn] = {"age": _mode(p["ages"]), "gender": _mode(p["gender"]), "tehsil": _mode(p["tehsil"]),
-                    "district": _mode(p["district"]), "pin": _mode(p["pin"]), "trail": tuple(sorted(p["trail"])),
-                    "dx": tuple(sorted(p["dx"])), "records": p["records"]}
-    return out
+def choose_policy(evaluate, cfg):
+    """Select using measured release risk, never trading away files for a lower risk.
+
+Utility is a generalization credit, not the official clinical utility score.
+Evaluate all nodes of equal utility before stopping at a feasible utility level.
+"""
+    if cfg.get("population_factor", 1) != 1:
+        raise ValueError("population inflation is not supported")
+    target = float(cfg.get("max_singling_out", 0.05))
+    nodes = [(a, l, p) for a in AGE_LEVELS for l in LOC_LEVELS for p in PIN_LEVELS]
+    def utility(node):
+        a, l, p = node
+        return (AGE_UTIL[a] + LOC_UTIL[l] + PIN_UTIL[p]) / 3
+    nodes.sort(key=lambda node: (-round(utility(node), 12), nodes_order(node)))
+    frontier, feasible = [], []
+    stop_reason = "lattice_exhausted"
+    for node in nodes:
+        credit = utility(node)
+        if feasible and credit < feasible[0]["utility"] - 1e-12:
+            stop_reason = "highest_feasible_utility"
+            break
+        measured = evaluate(node)
+        candidate = {"age_band": node[0], "location": node[1], "pin": node[2],
+                     "utility": credit, **measured}
+        frontier.append(candidate)
+        if candidate["valid"] and candidate["risk"] <= target:
+            feasible.append(candidate)
+        # At the most informative node, attaining the invariant lower bound
+        # proves that no coarser node can improve risk or utility.
+        if len(frontier) == 1 and candidate["valid"] and candidate["risk"] == candidate.get("risk_floor"):
+            stop_reason = "preserved_facts_lower_bound"
+            break
+    eligible = feasible or [f for f in frontier if f["valid"]]
+    if not eligible:
+        raise ValueError("no valid privacy candidate")
+    best = min(eligible, key=lambda f: (f["risk"], -f["utility"],
+               nodes_order((f["age_band"], f["location"], f["pin"]))))
+    return {"base": (best["age_band"], best["location"], best["pin"]),
+            "overrides": {}, "frontier": frontier, "target_met": bool(feasible),
+            "selected_risk": best["risk"], "patients": best["patients"],
+            "risk_metric": "observed_release_classes", "locally_recoded": 0,
+            "search_exhausted": len(frontier) == len(nodes), "stop_reason": stop_reason}
 
 
-def _qi(p, age_w, loc, pin):
-    age = age_band(p["age"], age_w) if p["age"] is not None else "?"
-    place = p["tehsil"] if loc == "tehsil" else p["district"]
-    pin_v = (p["pin"][:3] if p["pin"] and pin == "prefix3" else "-")
-    return (age, p["gender"] or "?", place or "?", pin_v)
-
-
-def evaluate_node(profiles, node, k_target, pop_factor, dx_counts, rare_dx):
-    age_w, loc, pin = node
-    classes = Counter(_qi(p, age_w, loc, pin) for p in profiles.values())
-    n = len(profiles) or 1
-    single = sum(1 for p in profiles.values() if classes[_qi(p, age_w, loc, pin)] * pop_factor < k_target)
-    # rare clinical signature: rare diagnosis combined with a small class
-    rare = sum(1 for p in profiles.values()
-               if any(dx_counts[d] <= rare_dx for d in p["dx"]) and classes[_qi(p, age_w, loc, pin)] < k_target)
-    risk = (single + 0.5 * rare) / n
-    util = (AGE_UTIL[age_w] + LOC_UTIL[loc] + PIN_UTIL[pin]) / 3
-    return risk, util, classes
-
-
-def choose_policy(profiles, cfg):
-    k_target = int(cfg.get("k_target", 5))
-    pop_factor = float(cfg.get("population_factor", 4))
-    max_risk = float(cfg.get("max_singling_out", 0.05))
-    rare_dx = int(cfg.get("rare_dx_max_patients", 3))
-    dx_counts = Counter(d for p in profiles.values() for d in p["dx"])
-    frontier = []
-    for ai, age_w in enumerate(AGE_LEVELS):
-        for li, loc in enumerate(LOC_LEVELS):
-            for pi, pin in enumerate(PIN_LEVELS):
-                risk, util, _ = evaluate_node(profiles, (age_w, loc, pin), k_target, pop_factor, dx_counts, rare_dx)
-                frontier.append({"age_band": age_w, "location": loc, "pin": pin, "risk": round(risk, 4),
-                                 "utility": round(util, 4), "order": (ai, li, pi)})
-    feasible = [f for f in frontier if f["risk"] <= max_risk]
-    if feasible:
-        best = max(feasible, key=lambda f: (f["utility"], -f["risk"], [-x for x in f["order"]]))
-        met = True
-    else:
-        best = min(frontier, key=lambda f: (f["risk"], -f["utility"], f["order"]))
-        met = False
-    base = (best["age_band"], best["location"], best["pin"])
-    # Mondrian-style local recoding: lift only patients still in small / rare classes
-    overrides = {}
-    class_sizes = {
-        (f["age_band"], f["location"], f["pin"]): Counter(
-            _qi(p, f["age_band"], f["location"], f["pin"]) for p in profiles.values()
-        ) for f in frontier
-    }
-    for psn, p in profiles.items():
-        node = list(base)
-        rare = any(dx_counts[d] <= rare_dx for d in p["dx"])
-        for _ in range(4):
-            cls = class_sizes[tuple(node)][_qi(p, *node)]
-            small = cls * pop_factor < k_target or (rare and cls < k_target)
-            if not small:
-                break
-            if node[1] == "tehsil":
-                node[1] = "district"
-            elif node[2] == "prefix3":
-                node[2] = "drop"
-            elif node[0] < AGE_LEVELS[-1]:
-                node[0] = AGE_LEVELS[AGE_LEVELS.index(node[0]) + 1]
-            else:
-                break
-        if tuple(node) != base:
-            overrides[psn] = tuple(node)
-    for f in frontier:
-        f.pop("order")
-    return {"base": base, "overrides": overrides, "frontier": frontier, "target_met": met,
-            "fixed_baseline": {"age_band": 5, "location": "tehsil", "pin": "prefix3"},
-            "patients": len(profiles), "locally_recoded": len(overrides)}
+def nodes_order(node):
+    return (AGE_LEVELS.index(node[0]), LOC_LEVELS.index(node[1]), PIN_LEVELS.index(node[2]))

@@ -21,6 +21,7 @@ from .fhir import FHIR, UnsafeFHIR, pointer_key
 from .ingest import Doc, Unit, infer_date_order, iter_input, load
 from .link import resolve
 from .sanitize import ASHA_RE, DOC_RE, EPONYM_RE, ORG_RE, WARD_RE, Ctx, Sanitizer
+from .staging import EncryptedStaging
 from .translit import has_deva, name_key, split_name
 from .util import Keys, SafeLog, peak_rss_mb
 
@@ -29,7 +30,7 @@ from .util import Keys, SafeLog, peak_rss_mb
 def load_policy(path: Path) -> dict:
     limits = {
         "k_target": (int, 1, math.inf),
-        "population_factor": (float, 1, math.inf),
+        "population_factor": (float, 1, 1),
         "max_singling_out": (float, 0, 1),
         "rare_dx_max_patients": (int, 0, math.inf),
         "date_shift_min_days": (int, 1, 365),
@@ -167,12 +168,13 @@ _QI_CHANGES = {"AGE", "DOB", "[VILLAGE]", "[PIN]", "[ADDRESS]", "LOCATION", "DAT
 
 
 class Pipeline:
-    def __init__(self, inp: Path, out: Path, secret: str, policy: dict, strict_risk=False):
+    def __init__(self, inp: Path, out: Path, secret: str, policy: dict, strict_risk=True):
         self.inp, self.out = inp, out
         self.keys = Keys(secret)
         self.policy = policy
         self.strict_risk = strict_risk
         self.risk_blocked = False
+        self.staging = EncryptedStaging()
         self.fhir = {}
         self.header_attrs = {}
         self.date_votes = defaultdict(Counter)
@@ -531,11 +533,36 @@ class Pipeline:
         self.log.stage(f"linked: {diag['clusters']} patients")
 
     # ------------------------------------------------------------ pass 3: policy
-    def choose(self):
-        profiles = PV.build_profiles(self.units, self.unit_doc)
-        self.policy_result = PV.choose_policy(profiles, self.policy)
-        self.policy_result["base_target_met"] = self.policy_result.pop("target_met")
-        self.log.stage("policy selected")
+    def choose(self, verified_dir):
+        initial = [(d.status, d.reason) for d in self.docs]
+        expected_files = None
+
+        def evaluate(node):
+            nonlocal expected_files
+            self.policy_result = {"base": node, "overrides": {}}
+            self.entities.clear()
+            for d, (status, reason) in zip(self.docs, initial):
+                d.status, d.reason = status, reason
+                d.verified_path = d.out_bytes = d.out_rel = None
+                for u in d.units:
+                    u.embedded = u.generalized = False
+                    u.out_loc = None
+            self.rewrite(verified_dir)
+            files = {d.rel for d in self.docs if d.status == "sanitized"}
+            if expected_files is None:
+                expected_files = files
+            exposure = self._exposure_stats()
+            return {"risk": exposure["singling_out_risk"],
+                    "risk_floor": exposure["preserved_facts_risk_floor"],
+                    "patients": exposure["patients"], "valid": files == expected_files}
+
+        chosen = PV.choose_policy(evaluate, self.policy)
+        # Rebuild the selected candidate so counters, locators and bytes all agree.
+        final = evaluate(chosen["base"])
+        if not final["valid"] or final["risk"] != chosen["selected_risk"]:
+            raise ValueError("candidate changed during policy search")
+        self.policy_result = chosen
+        self.log.stage("release policy selected")
 
     def ctx_for(self, u: Unit | None, d: Doc, stats) -> Ctx:
         if u is None:
@@ -573,7 +600,7 @@ class Pipeline:
                     self.verify([d])
                     if d.status == "sanitized":
                         d.verified_path = verified_dir / str(index)
-                        d.verified_path.write_bytes(d.out_bytes)
+                        self.staging.write(d.verified_path, d.out_bytes)
                         d.out_bytes = None
                 if d.status == "sanitized":
                     for k, v in stats.items():
@@ -878,7 +905,7 @@ class Pipeline:
                 p = san / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
                 if d.verified_path:
-                    d.verified_path.rename(p)
+                    p.write_bytes(self.staging.read(d.verified_path))
                 else:
                     p.write_bytes(d.out_bytes)
                 e = {"input_sha256": d.sha, "output": f"sanitized/{rel}", "status": "sanitized"}
@@ -976,7 +1003,7 @@ class Pipeline:
         for d in self.docs:
             if d.status != "sanitized":
                 continue
-            text = d.verified_path.read_bytes().decode("utf-8") if d.verified_path else d.out_bytes.decode("utf-8")
+            text = self.staging.read(d.verified_path).decode("utf-8") if d.verified_path else d.out_bytes.decode("utf-8")
             rows = obj = None
             if d.fmt == "csv":
                 rows = list(csv.reader(io.StringIO(text, newline=""), delimiter=d.delimiter))[1:]
@@ -1024,12 +1051,20 @@ class Pipeline:
         unresolved = sum(isinstance(key, tuple) for key in profiles)
         k_target = int(self.policy.get("k_target", 5))
         risk = sum(classes[signature] < k_target for signature in signatures) / max(1, len(profiles))
+        # These facts cannot change under the age/location/PIN candidate lattice.
+        # Their small classes are a lower bound, not an estimate of attacker success.
+        preserved = [frozenset((kind, value) for kind, value in signature
+                              if kind in {"diagnosis_code", "event_week", "source"})
+                     for signature in signatures]
+        preserved_classes = Counter(preserved)
+        risk_floor = sum(preserved_classes[s] < k_target for s in preserved) / max(1, len(profiles))
         return {
             "patients": len(profiles),
             "k_anonymity": {k: buckets[k] for k in ("1", "2-4", "5-9", "10+")},
             "cluster_sizes": {k: cluster_sizes[k] for k in ("1", "2-3", "4-6", "7+")},
             "unlinked_records": unresolved,
             "singling_out_risk": risk,
+            "preserved_facts_risk_floor": risk_floor,
             "k_target": k_target,
         }
 
@@ -1038,10 +1073,9 @@ class Pipeline:
         self.ingest()
         self.extract()
         self.link()
-        self.choose()
         self.out.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(prefix=".verified-", dir=self.out) as spool:
-            self.rewrite(Path(spool))
+            self.choose(Path(spool))
             self.diag["verification"] = dict(self.verification)
             self.exposure = self._exposure_stats()
             target = float(self.policy.get("max_singling_out", 0.05))

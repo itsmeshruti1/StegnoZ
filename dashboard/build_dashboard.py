@@ -178,8 +178,9 @@ def build(out_dir: Path, dest: Path):
     H.append(f'<div class="legend"><span><b style="background:var(--acc)"></b>applied policy '
              f'({esc(base[0]) if base else "?"}-yr bands, {esc(base[1]) if len(base)>1 else "?"}, PIN {esc(base[2]) if len(base)>2 else "?"})</span>'
              f'<span><b style="background:var(--mut)"></b>other candidates</span></div>')
-    H.append('<div class="note">The policy search compares candidates by modeled risk and utility. '
-             'The final observed risk check uses the candidate release.</div></div>')
+    H.append('<div class="note">Selection and final verification use observed candidate-release risk. '
+             'Utility is a generalization credit, not the official clinical score. '
+             'A preserved-facts lower bound can stop further search.</div></div>')
 
     # K-anonymity distribution
     ka = exp.get("k_anonymity", {})

@@ -1,0 +1,105 @@
+{
+  "python": "3.14.4 (main, Jun 18 2026, 14:25:02) [GCC 15.2.0]",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.43",
+  "limits": {
+    "cpus": [
+      0,
+      1
+    ],
+    "address_space_bytes": 4294967296
+  },
+  "checks": {
+    "regressions": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 5.649
+    },
+    "practice_run": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 13.998
+    },
+    "contract": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.165
+    },
+    "practice_check": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.38,
+      "metrics": {
+        "identifiers": [
+          0.0,
+          3230.0
+        ],
+        "canaries": [
+          0.0,
+          4.0
+        ],
+        "medical": [
+          4855.0,
+          4855.0
+        ],
+        "linkage": [
+          1.0,
+          0.95,
+          0.99
+        ]
+      }
+    },
+    "submission": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 42.135
+    },
+    "mutate": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.337
+    },
+    "mutated_run": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 70.971
+    },
+    "mutated_contract": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.245
+    },
+    "mutated_check": {
+      "passed": true,
+      "exit_code": 0,
+      "seconds": 0.533,
+      "metrics": {
+        "identifiers": [
+          0.0,
+          3230.0
+        ],
+        "canaries": [
+          0.0,
+          4.0
+        ],
+        "medical": [
+          4855.0,
+          4855.0
+        ],
+        "linkage": [
+          1.0,
+          0.96,
+          0.99
+        ]
+      }
+    },
+    "strict_run": {
+      "passed": true,
+      "exit_code": 1,
+      "seconds": 17.017
+    },
+    "input_unchanged": {
+      "passed": true
+    }
+  },
+  "passed": true
+}

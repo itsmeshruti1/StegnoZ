@@ -1,1 +1,2 @@
-# Track 3 runtime uses the Python 3.11+ standard library.
+# Offline runtime; install once during setup.
+cryptography==50.0.2

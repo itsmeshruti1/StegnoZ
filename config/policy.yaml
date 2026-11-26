@@ -2,12 +2,12 @@
 #
 # Reverse Privacy Engine targets: the engine searches the generalisation lattice
 # (age band 5/10/20 x location tehsil/district x PIN prefix/drop) and picks the least
-# destructive node whose measured singling-out risk is <= max_singling_out, then applies
-# Mondrian-style local recoding only to patients still in small or rare classes.
+# destructive node whose verified release risk is <= max_singling_out.
+# If none passes, choose the lowest observed risk and withhold by default.
 k_target: 5                  # minimum observed class size for the final release check
-population_factor: 5         # population estimate used only during candidate policy selection
+population_factor: 1         # compatibility setting; observed groups are never inflated
 max_singling_out: 0.05       # maximum share in observed classes smaller than k_target
-rare_dx_max_patients: 3      # a diagnosis shared by <= this many patients is a rare clinical signature
+rare_dx_max_patients: 3      # legacy compatibility; final signatures include all recognized diagnoses
 
 # Date shifting: every date of one patient moves by the same secret offset, so stays and
 # intervals are exact when linked and representable; offsets can coincide.

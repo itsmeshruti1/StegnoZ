@@ -1,0 +1,238 @@
+{
+  "schema": "stegnoz-audit/1",
+  "policy": {
+    "base": [
+      5,
+      "tehsil",
+      "prefix3"
+    ],
+    "frontier": [
+      {
+        "age_band": 5,
+        "location": "tehsil",
+        "pin": "prefix3",
+        "utility": 0.8000000000000002,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 5,
+        "location": "district",
+        "pin": "prefix3",
+        "utility": 0.7666666666666666,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 10,
+        "location": "tehsil",
+        "pin": "prefix3",
+        "utility": 0.7666666666666666,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 10,
+        "location": "district",
+        "pin": "prefix3",
+        "utility": 0.7333333333333334,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 20,
+        "location": "tehsil",
+        "pin": "prefix3",
+        "utility": 0.6999999999999998,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 20,
+        "location": "district",
+        "pin": "prefix3",
+        "utility": 0.6666666666666666,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 5,
+        "location": "tehsil",
+        "pin": "drop",
+        "utility": 0.5666666666666668,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 5,
+        "location": "district",
+        "pin": "drop",
+        "utility": 0.5333333333333333,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 10,
+        "location": "tehsil",
+        "pin": "drop",
+        "utility": 0.5333333333333333,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 10,
+        "location": "district",
+        "pin": "drop",
+        "utility": 0.5,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 20,
+        "location": "tehsil",
+        "pin": "drop",
+        "utility": 0.4666666666666666,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      },
+      {
+        "age_band": 20,
+        "location": "district",
+        "pin": "drop",
+        "utility": 0.4333333333333333,
+        "risk": 0.5555555555555556,
+        "risk_floor": 0.5462962962962963,
+        "patients": 108,
+        "valid": true
+      }
+    ],
+    "target_met": false,
+    "selected_risk": 0.5555555555555556,
+    "patients": 108,
+    "risk_metric": "observed_release_classes",
+    "locally_recoded": 0,
+    "search_exhausted": true,
+    "stop_reason": "lattice_exhausted",
+    "risk_target": 0.05
+  },
+  "linkage": {
+    "candidate_pairs": 7386,
+    "accepted_edges": 5673,
+    "rejected_merges": 90,
+    "fragment_links": 2,
+    "clusters": 70,
+    "em_m": {
+      "name": [
+        0.013,
+        0.053,
+        0.934
+      ],
+      "dob": [
+        0.01,
+        0.99
+      ],
+      "rel": [
+        0.01,
+        0.99
+      ],
+      "age": [
+        0.01,
+        0.99
+      ],
+      "village": [
+        0.01,
+        0.99
+      ],
+      "gender": [
+        0.01,
+        0.99
+      ],
+      "strong": [
+        0.01,
+        0.99
+      ]
+    },
+    "em_u": {
+      "name": [
+        0.0086,
+        0.0226,
+        0.9688
+      ],
+      "dob": [
+        0.9343,
+        0.0657
+      ],
+      "rel": [
+        0.2436,
+        0.7564
+      ],
+      "age": [
+        0.3396,
+        0.6604
+      ],
+      "village": [
+        0.3878,
+        0.6122
+      ],
+      "gender": [
+        0.001,
+        0.99
+      ],
+      "strong": [
+        0.4263,
+        0.5737
+      ]
+    }
+  },
+  "verification": {
+    "residual_fixes": 0,
+    "residual_quarantined": 0
+  },
+  "quarantine_reasons": {
+    "empty_file": 1,
+    "excessive_nesting": 1,
+    "malformed_json": 1,
+    "unsupported_format": 3
+  },
+  "exposure": {
+    "patients": 108,
+    "k_anonymity": {
+      "1": 60,
+      "2-4": 0,
+      "5-9": 0,
+      "10+": 48
+    },
+    "cluster_sizes": {
+      "1": 21,
+      "2-3": 1,
+      "4-6": 3,
+      "7+": 45
+    },
+    "unlinked_records": 38,
+    "singling_out_risk": 0.5555555555555556,
+    "preserved_facts_risk_floor": 0.5462962962962963,
+    "k_target": 5
+  }
+}

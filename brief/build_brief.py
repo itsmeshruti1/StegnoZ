@@ -85,8 +85,9 @@ def build(path=None):
                   "Each linked patient gets one date offset for representable dates. A final scan checks residual "
                   "identifiers and validates rewritten FHIR references.", BODY),
         Paragraph("What sets it apart", HEADING),
-        Paragraph("The policy search estimates utility loss before generalizing records. The export then measures "
-                  "risk separately on observed groups in the candidate release and reports when it exceeds the target.", BODY),
+        Paragraph("Policy selection measures actual verified releases using the same risk metric as the final check. "
+                  "A preserved-facts lower bound detects when further generalization cannot help. Candidate files "
+                  "are encrypted; the default CLI withholds releases that miss the target.", BODY),
         PageBreak(),
         Paragraph("PRACTICE EVIDENCE", SMALL),
         Paragraph("Privacy and utility", TITLE),
@@ -94,26 +95,27 @@ def build(path=None):
             [Paragraph(label, TABLE_HEAD) for label in ("Measure", "Result on organizer practice data")],
             [Paragraph(label, TABLE) for label in ("Visible annotated identifiers / planted canaries", "0 of 3,230 / 0 of 4")],
             [Paragraph(label, TABLE) for label in ("Clinical values preserved", "4,855 of 4,855")],
-            [Paragraph(label, TABLE) for label in ("Pairwise precision / recall / F0.5", "1.00 / 0.87 / 0.97")],
-            [Paragraph(label, TABLE) for label in ("Manifest coverage for annotated exports", "773 of 773")],
-            [Paragraph(label, TABLE) for label in ("Observed candidates in classes below k=5", "65.65% · 5% target missed")],
-            [Paragraph(label, TABLE) for label in ("Windows run over 200 files", "About 2.1 seconds · 39 MB peak RSS")],
+            [Paragraph(label, TABLE) for label in ("Pairwise precision / recall / F0.5", "1.00 / 0.95 / 0.99")],
+            [Paragraph(label, TABLE) for label in ("Manifest records / sanitized files", "820 / 194")],
+            [Paragraph(label, TABLE) for label in ("Observed candidates in classes below k=5", "58.72% · 5% target missed")],
+            [Paragraph(label, TABLE) for label in ("Offline Linux run over 200 files", "13.58 seconds · 44.3 MB peak RSS")],
         ], [93, 83], header=True),
         Spacer(1, 4 * mm),
-        Paragraph("The observed-class figure is an internal proxy. It includes recognized released facts and unresolved "
-                  "records. The default run reports a target miss and publishes for challenge scoring. The optional "
-                  "<b>--strict-risk</b> mode withholds the candidate records.", BODY),
+        Paragraph("These are practice checks, not the official hidden score. The observed-class proxy includes "
+                  "recognized released facts and unresolved records. Its 5% target is internal. The default CLI "
+                  "withholds a target miss; the competition entry point explicitly uses <b>--allow-risk-miss</b> "
+                  "to retain clinical utility for scoring.", BODY),
         Paragraph("Security design", HEADING),
         Paragraph("The organizer mounts inputs read-only. Outside the event, provision encrypted volumes for "
                   "inputs and releases, with storage access separate from key access. RAKSHA_SECRET comes from the "
-                  "environment. Raw inputs and decoded intermediates are never copied to staging. The CLI stages "
-                  "verified bytes and logs counts and coarse failure reasons.", BODY),
+                  "environment. Raw inputs and decoded intermediates are never copied to staging. Candidate files "
+                  "use AES-256-GCM with a memory-only run key. Logs contain counts and coarse failure reasons.", BODY),
         Paragraph("Known limitations", HEADING),
         Paragraph("Some unlabeled identifiers are ambiguous. A changed set of linkage evidence can change a "
-                  "pseudonym, and finite date offsets can coincide. Local tests exercised mixed date orders, "
-                  "multi-patient FHIR references, and hidden names in JSON keys. The hidden datasets and official "
-                  "Linux resource limits remain unverified.", BODY),
-        Paragraph("<b>Models declaration</b> None. The runtime is CPU-only and uses the Python standard library.", SMALL),
+                  "pseudonym, and finite date offsets can coincide. Rare clinical/date signatures prevent the current "
+                  "lattice from reaching the internal risk target without losing medical information. Linux checks "
+                  "use network isolation, two CPUs and a 4 GiB address-space limit. Hidden attacks remain unverified.", BODY),
+        Paragraph("<b>Models declaration</b> None. CPU-only Python with cryptography for encrypted staging.", SMALL),
     ]
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
 

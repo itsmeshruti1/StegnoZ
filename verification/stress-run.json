@@ -1,0 +1,25 @@
+{
+  "counts": {
+    "files_total": 200,
+    "files_sanitized": 194,
+    "files_quarantined": 6,
+    "files_suppressed": 0,
+    "records_processed": 822,
+    "identifiers_detected": 7105,
+    "records_linked": 760,
+    "records_generalized": 774,
+    "records_suppressed": 0,
+    "records_quarantined": 0
+  },
+  "timing": {
+    "seconds": 70.64
+  },
+  "resources": {
+    "peak_rss_mb": 47.1
+  },
+  "privacy": {
+    "target_met": false,
+    "strict_blocked": false
+  },
+  "manifest_records": 819
+}
