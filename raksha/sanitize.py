@@ -475,6 +475,11 @@ class Sanitizer:
                 return self.scrub(s, ctx)
             self._count(ctx, "PATIENT_NAME")
             return self.patient_token(ctx)
+        if kind == "maybe_relative":
+            if not looks_like_person(s):
+                return self.scrub(s, ctx)
+            self._count(ctx, "RELATIVE_NAME")
+            return "[RELATIVE]"
         if kind == "relative":
             m = re.match(r"^\s*((?:[SDWCBFM]\s*/\s*[Oo])|(?:पुत्र|पुत्री|पत्नी|पति|पिता)\b)\s*", s)
             self._count(ctx, "RELATIVE_NAME")

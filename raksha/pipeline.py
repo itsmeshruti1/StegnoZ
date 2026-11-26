@@ -237,6 +237,8 @@ class Pipeline:
                     hdr = d.header[ci] if ci < ncol else ""
                     if kind == "maybe_name" and X.looks_like_person(cell):
                         kind = "name"
+                    elif kind == "maybe_relative" and X.looks_like_person(cell):
+                        kind = "relative"
                     if kind == "name":
                         if cell.strip():
                             name_parts.append(cell.strip())
@@ -284,8 +286,8 @@ class Pipeline:
                         else:
                             name_groups[(kind, grp)].append(v)
                         continue
-                    if kind == "maybe_name" and isinstance(v, str) and X.looks_like_person(v):
-                        X.add_value(u.attrs, "name", v)
+                    if kind in ("maybe_name", "maybe_relative") and isinstance(v, str) and X.looks_like_person(v):
+                        X.add_value(u.attrs, "relative" if kind == "maybe_relative" else "name", v)
                         continue
                     if kind == "base64" and isinstance(v, str):
                         dec = self._b64_text(v)
@@ -539,6 +541,8 @@ class Pipeline:
     def _leaf(self, kind, v, ctx, d):
         if kind == "maybe_name":
             kind = "name" if isinstance(v, str) and X.looks_like_person(v) else None
+        if kind == "maybe_relative":
+            kind = "relative" if isinstance(v, str) and X.looks_like_person(v) else None
         if kind == "free":
             kind = None
         if kind in ("date",) and isinstance(v, str):

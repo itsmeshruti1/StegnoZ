@@ -155,6 +155,16 @@ def classify_key(key, parents: tuple = (), rtype: str | None = None) -> str | No
         return "gender"
     if toks & {"date", "dt", "on", "tithi"} or k_noparen.endswith("date") or k_noparen.endswith(" at"):
         return "date"
+    if toks & {"nm", "fnm", "lnm", "nombre", "naam"} or any("nm" in tk and len(tk) <= 6 for tk in toks):
+        return "relative" if pset & RELATIVE_PARENTS else "name"
+    # schema-robust fallback: an unknown short key directly under a person/relative context
+    # whose value is a name belongs to that person (handles renamed/unseen keys).
+    if k not in {"id", "type", "code", "status", "ref", "value", "url", "system", "display"} \
+            and not pset & ORG_PARENTS:
+        if pset & RELATIVE_PARENTS:
+            return "maybe_relative"
+        if pset & PERSON_PARENTS:
+            return "maybe_name"
     return None
 
 
@@ -178,9 +188,19 @@ def looks_like_person(value: str) -> bool:
     return len(toks) >= 2 or known >= 1
 
 
+def _looks_address(s: str) -> bool:
+    return bool(re.search(r"(?i)\b(?:H\.?\s*No|House|Makan|Flat|Mohalla|Colony|Ward\s+\d|near|opp\.?|Gali|"
+                          r"Nagar|Basti|Sector)\b|मकान|मोहल्ला|वार्ड", s)) and len(s) > 12
+
+
+def _looks_date(s: str) -> bool:
+    return bool(P.DATE_ISO.fullmatch(s) or P.DATE_NUM.fullmatch(s) or
+                P.DATE_DMONY.fullmatch(s) or P.DATE_MONDY.fullmatch(s))
+
+
 def classify_column(header: str, values: list[str]) -> str | None:
     kind = classify_key(header)
-    vals = [v for v in values if v and v.strip()][:200]
+    vals = [v for v in values if v and str(v).strip()][:200]
     if kind not in (None, "maybe_name"):
         return kind
     if not vals:
@@ -188,7 +208,7 @@ def classify_column(header: str, values: list[str]) -> str | None:
     n = len(vals)
     score = defaultdict(int)
     for v in vals:
-        s = v.strip()
+        s = str(v).strip()
         if P.EMAIL.fullmatch(s):
             score["email"] += 1
         elif P.ABHA_NUM.fullmatch(s):
@@ -199,12 +219,24 @@ def classify_column(header: str, values: list[str]) -> str | None:
             score["aadhaar"] += 1
         elif P.PHONE.fullmatch(s) or P.PHONE_MASKED.fullmatch(s):
             score["phone"] += 1
+        elif re.fullmatch(r"[1-9]\d{5}", P.norm_digits_keep(s)):
+            score["pin"] += 1
+        elif _looks_date(s):
+            score["date"] += 1
+        elif _looks_address(s):
+            score["address"] += 1
         elif looks_like_person(s):
             score["maybe_name"] += 1
+        elif re.fullmatch(r"(?=.*\d)[A-Za-z]{1,8}[A-Za-z0-9]*(?:[-/][A-Za-z0-9]+)*", s) and \
+                re.search(r"\d{3,}", s) and re.match(r"[A-Za-z]", s):
+            score["mrn"] += 1
     if score:
         best = max(sorted(score), key=lambda x: score[x])
-        if score[best] >= max(2, 0.6 * n) or (n <= 3 and score[best] == n):
-            return "name" if best == "maybe_name" else best
+        thresh = max(2, 0.6 * n) if best not in ("mrn", "pin", "aadhaar", "phone", "abha", "pan") else max(2, 0.5 * n)
+        if score[best] >= thresh or (n <= 3 and score[best] == n):
+            k = "name" if best == "maybe_name" else best
+            # a DOB column is a date column whose header hints birth; otherwise generic date
+            return k
     return kind
 
 
@@ -284,9 +316,10 @@ def add_value(attrs: dict, kind: str, value, date_order: str = "dmy"):
             nm = sval
         if nm:
             attrs["relatives"].append(nm)
-    elif kind == "maybe_name":
+    elif kind in ("maybe_name", "maybe_relative"):
         if looks_like_person(sval):
-            attrs["names"].append(clean_name(sval) if not has_deva(sval) else sval)
+            tgt = "relatives" if kind == "maybe_relative" else "names"
+            attrs[tgt].append(clean_name(sval) if not has_deva(sval) else sval)
     elif kind == "dob":
         d = parse_any_date(sval, date_order)
         if d:
