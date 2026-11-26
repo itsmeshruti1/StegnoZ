@@ -700,12 +700,46 @@ class Pipeline:
             "linkage": self.diag.get("linkage"),
             "verification": self.diag.get("verification"),
             "quarantine_reasons": dict(sorted(Counter(d.reason for d in self.docs if d.status == "quarantined").items())),
+            "exposure": self._exposure_stats(),
         }
         (self.out / "audit.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
         return report
 
     def _generalized(self, u):
         return True
+
+    def _exposure_stats(self):
+        """K-anonymity distribution over the Patient Exposure Graph under the applied policy, plus
+        cluster-size and linkage-confidence histograms. Aggregates only (no identities)."""
+        profiles = PV.build_profiles(self.units, self.unit_doc)
+        base = self.policy_result["base"]
+        overrides = self.policy_result["overrides"]
+        pop_factor = float(self.policy.get("population_factor", 5))
+        classes = Counter()
+        qi_of = {}
+        for psn, p in profiles.items():
+            node = overrides.get(psn, base)
+            qi = PV._qi(p, *node)
+            qi_of[psn] = qi
+            classes[qi] += 1
+        # express as estimated population-scale k (the registry is ~pop_factor x the patients),
+        # consistent with the risk the Reverse Privacy Engine optimises against.
+        kbuckets = Counter()
+        for psn in profiles:
+            k = classes[qi_of[psn]] * pop_factor
+            b = "1" if k < 2 else ("2-4" if k < 5 else ("5-9" if k < 10 else "10+"))
+            kbuckets[b] += 1
+        sizes = Counter(len(g) for g in self.groups.values()) if hasattr(self, "groups") else Counter()
+        sbuckets = Counter()
+        for sz, cnt in sizes.items():
+            b = "1" if sz == 1 else ("2-3" if sz <= 3 else ("4-6" if sz <= 6 else "7+"))
+            sbuckets[b] += cnt
+        return {
+            "patients": len(profiles),
+            "k_anonymity": {k: kbuckets.get(k, 0) for k in ("1", "2-4", "5-9", "10+")},
+            "cluster_sizes": {k: sbuckets.get(k, 0) for k in ("1", "2-3", "4-6", "7+")},
+            "unlinked_records": sum(1 for u in self.units if u.has_identity and not u.psn),
+        }
 
     def run(self):
         t0 = time.time()
