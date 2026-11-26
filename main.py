@@ -49,7 +49,14 @@ def main() -> int:
     ap.add_argument("--output", required=True)
     ap.add_argument("--policy", default=os.environ.get("RAKSHA_POLICY", str(HERE / "config" / "policy.yaml")))
     a = ap.parse_args()
-    inp, out = Path(a.input).resolve(), Path(a.output).resolve()
+
+    def _unquote(s: str) -> str:
+        s = s.strip()
+        if len(s) >= 2 and s[0] == s[-1] and s[0] in "'\"":
+            s = s[1:-1]
+        return s
+
+    inp, out = Path(_unquote(a.input)).resolve(), Path(_unquote(a.output)).resolve()
     out.mkdir(parents=True, exist_ok=True)
     secret = env_secret()
     if not secret:

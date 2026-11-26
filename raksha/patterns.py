@@ -125,6 +125,6 @@ AGE_FORMS = [
     # 52 Yrs/F, 48 Y / F, 35/F, 52 yrs, 65 वर्ष
     re.compile(rf"(?<![\d\-/.x×])({D}{{1,3}})(\s*(?:Yrs?|Years?|Y|yr|yo|वर्ष|साल)\.?\s*/\s*(?:[MFmf]|Male|Female|पुरुष|महिला)\b)"),
     re.compile(rf"(?<![\d\-/.x×])({D}{{1,3}})(\s*/\s*(?:[MFmfO]|Male|Female)\b)(?!\s*\d)"),
-    re.compile(rf"((?:Age|AGE|age|Aayu|Umar|आयु|उम्र)\s*[:\-]?\s*)({D}{{1,3}})(?!\s*[-–]\s*\d)(?![\d.])"),
+    re.compile(rf"((?<![A-Za-z])(?:Age|AGE|Aayu|Umar|आयु|उम्र)\s*[:\-]?\s*)({D}{{1,3}})(?!\s*[-–]\s*\d)(?![\d.])"),
     re.compile(rf"(?<![\d\-/.x×])({D}{{1,3}})(\s*(?:वर्ष|साल)(?:\s*/|\s|$))"),
 ]

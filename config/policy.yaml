@@ -4,8 +4,8 @@
 # (age band 5/10/20 x location tehsil/district x PIN prefix/drop) and picks the least
 # destructive node whose measured singling-out risk is <= max_singling_out, then applies
 # Mondrian-style local recoding only to patients still in small or rare classes.
-k_target: 5                  # minimum patients sharing a quasi-identifier class
-population_factor: 4         # registry population is ~4-5x the patient count (attack model)
+k_target: 5                  # minimum people sharing a quasi-identifier class in the population
+population_factor: 5         # registry population is ~4-5x the patient count (attack model)
 max_singling_out: 0.05       # risk objective: share of patients in classes smaller than k_target
 rare_dx_max_patients: 3      # a diagnosis shared by <= this many patients is a rare clinical signature
 
