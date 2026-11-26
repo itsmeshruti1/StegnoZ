@@ -23,8 +23,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
-from raksha import patterns as P  # noqa: E402
-from raksha.translit import deva_to_latin, has_deva, name_key  # noqa: E402
+from stegnoz import patterns as P  # noqa: E402
+from stegnoz.translit import deva_to_latin, has_deva, name_key  # noqa: E402
 
 
 def norm(s):
@@ -153,7 +153,7 @@ def main():
     raw_a4 = raw.get("patients_reidentified", 1.0) or 1.0
 
     print("=" * 56)
-    print(" RakshaMed internal attack simulation (dev-only proxy)")
+    print(" StegnoZ internal attack simulation (dev-only proxy)")
     print("=" * 56)
     print(f" profiles (pseudonymous patients): {n}")
     print(f" A1 direct exposure (phone/id present): {a1:5.1%}")

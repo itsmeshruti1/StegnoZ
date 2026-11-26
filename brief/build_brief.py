@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render the 2-page RakshaMed Project Brief PDF (dev tool; reportlab, not a runtime dependency)."""
+"""Render the 2-page StegnoZ Project Brief PDF (dev tool; reportlab, not a runtime dependency)."""
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4
@@ -62,9 +62,9 @@ class Diagram(Flowable):
         c.drawRightString(self.width, y - 4.5 * mm, "Output: sanitized/  +  report.json  +  records.jsonl")
 
 
-def build(path="brief/RakshaMed_Project_Brief.pdf"):
+def build(path="brief/StegnoZ_Project_Brief.pdf"):
     doc = SimpleDocTemplate(path, pagesize=A4, leftMargin=16 * mm, rightMargin=16 * mm,
-                            topMargin=12 * mm, bottomMargin=11 * mm, title="RakshaMed Project Brief")
+                            topMargin=12 * mm, bottomMargin=11 * mm, title="StegnoZ Project Brief")
     ss = getSampleStyleSheet()
     H = ParagraphStyle("H", parent=ss["Heading2"], textColor=ACC, fontSize=10.5, spaceBefore=5,
                        spaceAfter=2, fontName="Helvetica-Bold")
@@ -78,13 +78,13 @@ def build(path="brief/RakshaMed_Project_Brief.pdf"):
         for it in items:
             e.append(Paragraph("• " + it, LI))
 
-    e.append(Paragraph("RakshaMed", T))
+    e.append(Paragraph("StegnoZ", T))
     e.append(Paragraph("An offline, CPU-only, LLM-free privacy firewall for multilingual hospital records "
                        "&nbsp;·&nbsp; Track 3 · Secret Wards", sub))
 
     e.append(Paragraph("1. In one paragraph", H))
     e.append(Paragraph(
-        "RakshaMed turns a chaotic, multi-hospital, multi-script hospital dump into a research-safe "
+        "StegnoZ turns a chaotic, multi-hospital, multi-script hospital dump into a research-safe "
         "release: it removes every direct and quasi-identifier, keeps every medical value exact, and "
         "gives each real patient one stable pseudonym across all files and languages. The idea that "
         "makes it more than a PII scrubber is that it reads the whole dump once to learn a run-only "

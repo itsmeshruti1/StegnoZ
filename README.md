@@ -1,6 +1,6 @@
-# RakshaMed — an offline multilingual healthcare privacy firewall
+# StegnoZ — an offline multilingual healthcare privacy firewall
 
-RakshaMed is a privacy firewall for the **Secret Wards** challenge (Track 3). It ingests a chaotic
+StegnoZ is a privacy firewall for the **Secret Wards** challenge (Track 3). It ingests a chaotic
 dump of Indian hospital records — CSV, TSV, nested JSON, FHIR R4 bundles and free-text notes, in
 English, Devanagari Hindi and Hinglish, across four hospital systems and several encodings — and
 produces a research-safe release that removes every direct identifier and quasi-identifier while
@@ -10,14 +10,14 @@ with no large language model, no generative model and no pretrained transformer 
 entire detection, linkage and privacy stack is implemented from scratch in this repository using
 only the Python standard library.
 
-## Why it is hard, and how RakshaMed answers each trap
+## Why it is hard, and how StegnoZ answers each trap
 
 The same patient appears as `Mohammad Arif`, `मोहम्मद आरिफ`, `Md. Arif` and `Arif sahab ka BP 150/90`,
 each with a different phone format, a half-written address and a different hospital ID. Names hide in
 JSON keys, CSV headers, file names, FHIR narratives and base64 attachments. Numbers that look like
 identifiers are really doses (`1-0-1`, `Dolo 650 BD x 5 days`). After submission an automated
 attacker holding a voter roll and a few known facts (a visit date, a rare disease, a length of stay)
-tries to re-identify every patient. RakshaMed is built around these traps rather than around the
+tries to re-identify every patient. StegnoZ is built around these traps rather than around the
 practice files, so it survives the hidden datasets that use column names, labels and formats never
 seen in practice.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RakshaMed - offline, CPU-only, LLM-free privacy firewall for multilingual hospital records.
+"""StegnoZ - offline, CPU-only, LLM-free privacy firewall for multilingual hospital records.
 
 Usage:  RAKSHA_SECRET=<secret> python main.py --input <input dir> --output <empty output dir>
 
@@ -17,8 +17,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-from raksha.pipeline import Pipeline, load_policy  # noqa: E402
-from raksha.util import env_secret  # noqa: E402
+from stegnoz.pipeline import Pipeline, load_policy  # noqa: E402
+from stegnoz.util import env_secret  # noqa: E402
 
 
 def _emergency_report(inp: Path, out: Path, t0: float, why: str):
@@ -44,7 +44,7 @@ def _emergency_report(inp: Path, out: Path, t0: float, why: str):
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="RakshaMed privacy firewall")
+    ap = argparse.ArgumentParser(description="StegnoZ privacy firewall")
     ap.add_argument("--input", required=True)
     ap.add_argument("--output", required=True)
     ap.add_argument("--policy", default=os.environ.get("RAKSHA_POLICY", str(HERE / "config" / "policy.yaml")))
@@ -60,14 +60,14 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
     secret = env_secret()
     if not secret:
-        sys.stderr.write("[rakshamed] warning: RAKSHA_SECRET is not set\n")
+        sys.stderr.write("[stegnoz] warning: RAKSHA_SECRET is not set\n")
     policy = load_policy(Path(a.policy))
     t0 = time.time()
     sys.setrecursionlimit(max(sys.getrecursionlimit(), 5000))
     try:
         rep = Pipeline(inp, out, secret, policy).run()
     except Exception as e:  # noqa: BLE001 - type only, never the message (it may contain data)
-        sys.stderr.write(f"[rakshamed] pipeline failure ({type(e).__name__}); all files quarantined\n")
+        sys.stderr.write(f"[stegnoz] pipeline failure ({type(e).__name__}); all files quarantined\n")
         _emergency_report(inp, out, t0, "pipeline_failure")
         return 1
     c = rep["counts"]

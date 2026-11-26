@@ -19,7 +19,7 @@ import unicodedata
 _ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ"  # letters only: a pseudonym can never embed an ID digit core
 
 
-def hkdf(secret: bytes, info: bytes, length: int = 32, salt: bytes = b"rakshamed-v1") -> bytes:
+def hkdf(secret: bytes, info: bytes, length: int = 32, salt: bytes = b"stegnoz-v1") -> bytes:
     prk = hmac.new(salt, secret, hashlib.sha256).digest()
     out, t, i = b"", b"", 1
     while len(out) < length:
@@ -103,7 +103,7 @@ class SafeLog:
         self.counts[key] = self.counts.get(key, 0) + n
 
     def stage(self, name: str):
-        sys.stderr.write(f"[rakshamed] {name}\n")
+        sys.stderr.write(f"[stegnoz] {name}\n")
         sys.stderr.flush()
 
 

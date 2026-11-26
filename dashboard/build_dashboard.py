@@ -143,8 +143,8 @@ def build(out_dir: Path, dest: Path):
     H = []
     H.append(f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
              f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-             f'<title>RakshaMed Privacy Release</title><style>{CSS}</style></head><body><div class="wrap">')
-    H.append('<header><h1>RakshaMed &middot; Privacy Release Audit</h1>'
+             f'<title>StegnoZ Privacy Release</title><style>{CSS}</style></head><body><div class="wrap">')
+    H.append('<header><h1>StegnoZ &middot; Privacy Release Audit</h1>'
              '<span class="tag">offline, CPU-only, LLM-free &middot; aggregate evidence, no identities</span></header>')
 
     # KPIs
@@ -236,7 +236,7 @@ def build(out_dir: Path, dest: Path):
              'copied out raw. Secret, logs and temp files carry no identifiers.</div></div>')
 
     H.append('</div>')  # cards
-    H.append('<div class="foot">Generated from report.json + audit.json of a RakshaMed run. '
+    H.append('<div class="foot">Generated from report.json + audit.json of a StegnoZ run. '
              'No large language model, generative model or pretrained transformer is used. '
              'This page contains only aggregate counts and is safe to share.</div>')
     H.append('</div></body></html>')
@@ -251,7 +251,7 @@ def build(out_dir: Path, dest: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--output", required=True, help="a RakshaMed output folder (with report.json + audit.json)")
+    ap.add_argument("--output", required=True, help="a StegnoZ output folder (with report.json + audit.json)")
     ap.add_argument("--dest", default=None)
     a = ap.parse_args()
     out = Path(a.output)

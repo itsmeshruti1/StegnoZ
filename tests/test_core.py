@@ -4,12 +4,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from raksha import patterns as P
-from raksha.extract import classify_column, classify_key, looks_like_person
-from raksha.link import resolve
-from raksha.privacy import age_band, choose_policy
-from raksha.translit import deva_to_latin, name_key, token_sim
-from raksha.util import Keys
+from stegnoz import patterns as P
+from stegnoz.extract import classify_column, classify_key, looks_like_person
+from stegnoz.link import resolve
+from stegnoz.privacy import age_band, choose_policy
+from stegnoz.translit import deva_to_latin, name_key, token_sim
+from stegnoz.util import Keys
 
 
 def test_cross_script_name_keys_match():
