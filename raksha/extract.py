@@ -198,8 +198,19 @@ def _looks_date(s: str) -> bool:
                 P.DATE_DMONY.fullmatch(s) or P.DATE_MONDY.fullmatch(s))
 
 
+_KEEP_HEADERS = re.compile(r"(?i)\b(?:package|procedure|scheme|hcpcs|cpt|drug|test|loinc|icd|bill\s*no|"
+                           r"bill_no|invoice|sample_?id|sample\s*no|lab\s*no|visit_?id|opd\s*no\b|"
+                           r"status|package_?code|dept|department|ward|room|bed|package_name|product|"
+                           r"service|diagnosis|strength|frequency|dose|dosage|unit|result|range|amount|"
+                           r"qty|quantity|code|loinc_?code|icd_?code)\b")
+
+
 def classify_column(header: str, values: list[str]) -> str | None:
     kind = classify_key(header)
+    h = str(header)
+    # clinical / coding / transactional columns are not identifiers: never content-vote them to PII
+    if kind is None and _KEEP_HEADERS.search(h) and not re.search(r"(?i)name|patient|phone|mobile|aadha", h):
+        return None
     vals = [v for v in values if v and str(v).strip()][:200]
     if kind not in (None, "maybe_name"):
         return kind

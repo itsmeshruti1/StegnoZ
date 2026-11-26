@@ -229,7 +229,11 @@ def resolve(units_attrs: list[dict], link_threshold: float = 6.0):
     for (i, j, v, g, f) in info:
         w = weight(v, m, u)
         strong = v.get("strong") == 1
-        name_ok = v.get("name", 1) >= 1 if strong else v.get("name") == 2
+        # a shared unique identifier links when the names are compatible; a lone initial or a
+        # single matching surname counts, but two differing full names do not (mis-keyed id).
+        has_name_cmp = "name" in v
+        strong_name_ok = (v.get("name", 0) >= 1) or f >= 0.7 or g >= 0.9 or not has_name_cmp
+        name_ok = strong_name_ok if strong else v.get("name") == 2
         second = v.get("dob") == 1 or v.get("rel") == 1 or (v.get("village") == 1 and v.get("age") == 1)
         if strong and name_ok and v.get("gender", 1) == 1 and v.get("dob", 1) == 1:
             edges.append((0, -w, i, j))
