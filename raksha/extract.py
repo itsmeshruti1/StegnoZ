@@ -219,9 +219,9 @@ _KIN_DEVA = "|".join(sorted(map(re.escape, L.KIN_MARKERS_DEVA), key=len, reverse
 KIN_RE = re.compile(rf"(?P<rel>(?<![A-Za-z])(?:{_KIN})|(?:{_KIN_DEVA}))\s*[:\-–.]?\s*(?:(?i:Mr|Mrs|Smt|Shri|Sri|Late)\.?\s+)?(?P<n>{NAME_SEQ})")
 DOB_RE = re.compile(r"(?i:DOB|D\.O\.B\.?|Date\s+of\s+Birth|Birth\s*Date|जन्म\s*तिथि|Janm\s*Tithi)\s*[:\-]?\s*(?P<d>[0-9०-९]{1,4}[/.\-][0-9०-९]{1,2}[/.\-][0-9०-९]{2,4})")
 ID_LABEL_RE = re.compile(r"(?i:UHID|MRN|MR\s*No|Reg(?:istration)?\.?\s*No|IPD\s*No|IP\s*No|OPD\s*No|CR\s*No|Patient\s*ID|Hosp(?:ital)?\.?\s*No|Case\s*No|Adm(?:ission)?\.?\s*No|पंजीकरण\s*सं|आईपीडी\s*सं)\.?\s*[:\-#]?\s*(?P<id>[A-Za-z0-9][A-Za-z0-9/\-]{3,})")
-VILLAGE_RE = re.compile(r"(?:(?<![A-Za-z])(?:Vill(?:age)?\.?|Gram|Gaon|Mauza)\s+|(?:ग्राम|गाँव|गांव)\s+)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)){0,2})")
-TEHSIL_RE = re.compile(r"(?:(?<![A-Za-z])(?:Tehsil|Tahsil|Teh\.)\s+|तहसील\s+)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+))?)")
-DISTRICT_RE = re.compile(r"(?:(?<![A-Za-z])(?:Distt?\.?|District|Dist\.)\s+|(?:जिला|ज़िला)\s+)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+))?)")
+VILLAGE_RE = re.compile(r"(?:(?<![A-Za-z])(?:Vill(?:age)?\.?|Gram|Gaon|Mauza)\s*[:\-]?\s+|(?:ग्राम|गाँव|गांव)\s*[:\-]?\s*)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)){0,2})")
+TEHSIL_RE = re.compile(r"(?:(?<![A-Za-z])(?:Tehsil|Tahsil|Teh\.)\s*[:\-]?\s+|तहसील\s*[:\-]?\s*)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+))?)")
+DISTRICT_RE = re.compile(r"(?:(?<![A-Za-z])(?:Distt?\.?|District|Dist\.)\s*[:\-]?\s+|(?:जिला|ज़िला)\s*[:\-]?\s*)(?P<v>(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+)(?:\s(?:[A-Z][a-zA-Z]+|[ऀ-ॿ]+))?)")
 GENDER_RE = re.compile(r"(?:/\s*|\b)(?P<g>M|F|Male|Female|पुरुष|महिला)\b")
 
 _STOP_TOKENS = {t.lower() for t in ["Age", "Sex", "UHID", "IPD", "Mob", "Mobile", "Reg", "No", "Date", "DOB",
@@ -249,7 +249,8 @@ def clean_name(seq: str) -> str:
 def new_attrs() -> dict:
     return {"names": [], "relatives": [], "dob": set(), "ages": [], "gender": set(), "phones": set(),
             "aadhaar": set(), "abha": set(), "ids": set(), "emails": set(), "pans": set(), "insurance": set(),
-            "villages": [], "tehsils": [], "districts": [], "pins": set(), "cand_ids": set()}
+            "villages": [], "tehsils": [], "districts": [], "pins": set(), "cand_ids": set(), "cores": set(),
+            "cand_cores": {}}
 
 
 def norm_gender(v: str) -> str | None:
@@ -329,6 +330,7 @@ def add_value(attrs: dict, kind: str, value, date_order: str = "dmy"):
     elif kind == "mrn":
         if re.search(r"\d{3,}", sval):
             attrs["ids"].add(P.id_norm(sval))
+            attrs["cores"].add(P.id_core(sval))
     elif kind == "pan":
         attrs["pans"].add(sval.upper())
     elif kind == "insurance":
@@ -382,10 +384,12 @@ def extract_text(attrs: dict, text: str, date_order: str = "dmy", address: bool 
         for m in ID_LABEL_RE.finditer(text):
             if re.search(r"\d{3,}", m.group("id")):
                 attrs["ids"].add(P.id_norm(m.group("id")))
+                attrs["cores"].add(P.id_core(m.group("id")))
         for m in P.GENERIC_ID.finditer(text):
             tok = m.group(0)
             if len(P.id_core(tok)) >= 5 and re.match(r"[A-Za-z]{2,}", tok):
                 attrs["cand_ids"].add(P.id_norm(tok))
+                attrs["cand_cores"][P.id_norm(tok)] = P.id_core(tok)
         for m in P.EMAIL.finditer(text):
             attrs["emails"].add(m.group(0).lower())
         for m in P.ABHA_NUM.finditer(text):

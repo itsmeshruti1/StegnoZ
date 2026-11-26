@@ -27,13 +27,13 @@ from .extract import (DISTRICT_RE, KIN_RE, NAME_LABEL_RE, NAME_SEQ, TEHSIL_RE, V
 from .translit import jaro_winkler, name_key
 from .util import _HOMO, _ZW
 
-WORD_RE = re.compile(r"[A-Za-z][A-Za-z'’]*|[\u0900-\u0963\u0971-\u097F]+")
+WORD_RE = re.compile(r"[A-Za-z]+|[\u0900-\u0963\u0971-\u097F]+")
 SAFE_WORDS = {w.lower() for w in (L.MEDICAL_WORDS | L.HINGLISH_MEDICAL | L.COMMON_EN)}
 _ORG_SUFFIX = r"(?:Hospital|Hospitals|Diagnostics|Diagnostic|Pathology|Path\s+Lab|Labs?|Clinic|Centre|Center|Trust|Medical\s+College|Nursing\s+Home|Dispensary|PHC|CHC|Health\s+Centre|Polyclinic|Imaging|Scans?|Pharmacy|Medicals?)"
 ORG_RE = re.compile(rf"(?:[A-Z][A-Za-z]+\s+){{1,4}}{_ORG_SUFFIX}\b|\b{_ORG_SUFFIX}\s*,\s*[A-Z][a-z]+")
 DOC_RE = re.compile(r"(?:\b(?:Dr|DR|Doctor|Prof)\.?\s*|डॉ\.?\s*|डा\.\s*)(?:[A-Z][a-zA-Z'’]*\.?\s?){1,4}|(?:\b(?:Dr|DR|Doctor)\.?\s*|डॉ\.?\s*)[\u0900-\u097F]+(?:\s[\u0900-\u097F]+){0,2}")
 WARD_RE = re.compile(r"\b(?:Ward|WARD)\s*(?:No\.?\s*)?\d+\s*\([A-Za-z ]+\)|\b(?:ICU|NICU|PICU|CCU|OT|Emergency|Casualty)\b")
-ASHA_RE = re.compile(r"\bASHA\b(?:\s+(?:worker|didi|karyakarta|sahayogini))?|\bASHA\s+worker\b|\basha\s+worker\b", re.I)
+ASHA_RE = re.compile(r"\bASHA\b(?:\s+(?:worker|didi|karyakarta|sahayogini|bahu|sevika))?|\b[Aa]sha\s+(?:worker|karyakarta|sahayogini|sevika)\b|आशा\s+(?:कार्यकर्ता|बहू|दीदी)")
 EPONYM_RE = re.compile(r"\b(?:" + "|".join(sorted({re.escape(e.rstrip("'’s")) for e in L.EPONYMS}, key=len, reverse=True)) + r")(?:'s|’s|')?\s+(?:disease|syndrome|palsy|sign|test|fracture|ulcer|sarcoma|tumou?r|lymphoma|phenomenon|criteria|score|scale|triad|operation|procedure|repair|anomaly|tetralogy)\b", re.I)
 POST_HON_RE = re.compile(r"(?P<n>(?:[A-Z][a-z]+|[\u0900-\u097F]+)(?:\s(?:[A-Z][a-z]+|[\u0900-\u097F]+))?)\s+(?P<h>" + "|".join(sorted(map(re.escape, L.POST_HONORIFICS - {"devi"}), key=len, reverse=True)) + r")\b(?!\s*[:])")
 PRE_HON_RE = re.compile(r"\b(?:Mr|Mrs|Ms|Smt|Shri|Sri|Kumari|Km|Mst|Master|Baby)\.?\s+(?P<n>" + NAME_SEQ + ")")
@@ -41,7 +41,7 @@ BEFORE_KIN_RE = re.compile(rf"(?P<n>{NAME_SEQ})\s*,?\s*(?:\(?\s*)(?:S|D|W|C|B)\s
 KIN_LABEL_RE = re.compile(rf"(?i:attendant|guardian|father(?:'s)?\s*name|husband(?:'s)?\s*name|mother(?:'s)?\s*name|relative|next\s+of\s+kin|nok|informant|care\s+of|spouse)\s*[:\-–]\s*(?:(?i:Mr|Mrs|Smt|Shri)\.?\s+)?(?P<n>{NAME_SEQ})")
 CUE_RE = re.compile(rf"(?i:called\s+by|raised\s+by|witnessed\s+by|signed\s+by|brought\s+by|accompanied\s+by|informed\s+by|visitor|caller|contact\s+person|consent\s+(?:given|signed)\s+by|attended\s+by)\s*[:\-–]?\s*(?P<n>{NAME_SEQ})")
 CAP_SEQ_RE = re.compile(r"(?<![A-Za-z])(?:[A-Z][a-z'’]+|[A-Z]{2,})(?:\s+(?:[A-Z][a-z'’]+|[A-Z]{2,})){1,2}(?![A-Za-z])")
-ADDRESS_LINE_RE = re.compile(r"(?P<lab>(?i:address|addr|residence|res\.|pata)\s*[:\-]\s*|पता\s*[:\-]\s*)(?P<v>[^\n]+)")
+ADDRESS_LINE_RE = re.compile(r"(?P<lab>(?i:address|addr|residence|res\.|pata)(?:\s*\([^)\n]{0,30}\))?\s*[:\-]\s*|पता\s*[:\-]\s*)(?P<v>[^\n]+)")
 HOUSE_RE = re.compile(r"(?i:\b(?:H\.?\s*No|House(?:\s+No)?|Makan(?:\s+No)?|Flat(?:\s+No)?|Plot(?:\s+No)?|Qtr(?:\s+No)?|Door\s+No)\.?\s*[:\-]?\s*\d+[A-Za-z]?(?:/\d+)?)|मकान\s*नं\.?\s*[0-9\u0966-\u096F]+")
 LOCALITY_RE = re.compile(r"\b(?:Mohalla|Mohallah|Mohala|Colony|Basti|Nagar|Sector|Gali|Lane)\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})|\b(?:[A-Z][a-z]+\s+){1,2}(?:Colony|Basti|Bazar|Bazaar|Nagar|Mohalla)\b|मोहल्ला\s+[\u0900-\u097F]+(?:\s[\u0900-\u097F]+)?")
 LANDMARK_RE = re.compile(r"\b(?:near|opp\.?|opposite|behind|beside|next\s+to)\s+(?:the\s+)?(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})|[\u0900-\u097F]+(?:\s[\u0900-\u097F]+){0,2}\s+(?:के\s+पीछे|के\s+पास|के\s+सामने)")
@@ -237,10 +237,26 @@ class Sanitizer:
                 nxt = text[m.end():m.end() + 12].lower()
                 if not any(nxt.strip().startswith(h) for h in L.POST_HONORIFICS):
                     continue
-            if wl in SAFE_WORDS or wl in L.COMMUNITY_ROLES:
+            if (wl in SAFE_WORDS or wl in L.COMMUNITY_ROLES) and name_key(w) not in ctx.own_keys:
                 if not self._name_context(text, m.start(), m.end()):
                     continue
             add(60, m.start(), m.end(), self._word_rep(role, w, ctx))
+
+        # village names learnt from structured fields, matched in any script
+        if self.D.village_keys:
+            words = list(WORD_RE.finditer(text))
+            keys = [name_key(w.group(0)) for w in words]
+            for i in range(len(words)):
+                for n in (3, 2, 1):
+                    if i + n > len(words):
+                        continue
+                    tup = tuple(k for k in keys[i:i + n] if k)
+                    if tup in self.D.village_keys and tup not in self.D.place_keys:
+                        if n == 1 and not has_deva(words[i].group(0)) and not words[i].group(0)[:1].isupper():
+                            continue
+                        add(83, words[i].start(), words[i + n - 1].end(), self.village_out(ctx))
+                        self._count(ctx, "[VILLAGE]")
+                        break
 
         # context names next to phones / IDs (canary-style names in no dictionary)
         for pr, s, e, rep in list(spans):
@@ -280,6 +296,8 @@ class Sanitizer:
             return True
         if any(after.strip().startswith(h) for h in ("ji", "sahab", "bhai", "didi", ", w/o", ", s/o", ", d/o", " w/o", " s/o", " d/o")):
             return True
+        if re.match(r"\s+(?:ka|ki|ke|ko|ne|se)\s", after) or re.match(r"['’]s\s", after):
+            return True
         nxt = re.match(r"\s+([A-Z][a-z]+)", text[e:e + 20])
         prv = re.search(r"([A-Z][a-z]+)\s+$", text[max(0, s - 20):s])
         for g in (nxt, prv):
@@ -288,14 +306,17 @@ class Sanitizer:
         return False
 
     def _name_rep(self, role, name, ctx):
-        toks = [name_key(t) for t in name.split()]
-        if role in ("patient", None) or any(t in ctx.own_keys for t in toks):
-            if not ctx.own_keys or any(t in ctx.own_keys for t in toks) or role == "patient":
-                if not (ctx.rel_keys and all(t in ctx.rel_keys for t in toks if t) and not any(t in ctx.own_keys for t in toks)):
-                    self._count(ctx, "PATIENT_NAME")
-                    return self.patient_token(ctx)
-        self._count(ctx, "RELATIVE_NAME" if role == "relative" else "PERSON_NAME")
-        return "[RELATIVE]" if role == "relative" or any(t in ctx.rel_keys for t in toks) else "[NAME]"
+        toks = [name_key(t) for t in name.split() if name_key(t)]
+        given = toks[0] if toks else ""
+        if role == "relative":
+            self._count(ctx, "RELATIVE_NAME")
+            return "[RELATIVE]"
+        if role == "patient" or (given and given in ctx.own_keys):
+            if not (given in ctx.rel_keys and given not in ctx.own_keys):
+                self._count(ctx, "PATIENT_NAME")
+                return self.patient_token(ctx)
+        self._count(ctx, "RELATIVE_NAME" if given in ctx.rel_keys else "PERSON_NAME")
+        return "[RELATIVE]" if given in ctx.rel_keys else "[NAME]"
 
     def _word_rep(self, role, w, ctx):
         k = name_key(w)

@@ -44,7 +44,8 @@ class Dictionary:
         self.id_cores: set[str] = set()
         self.id_to_psn: dict[str, str] = {}
         self.core_to_psn: dict[str, str] = {}
-        self.village_keys: set[str] = set()
+        self.village_keys: set = set()
+        self.place_keys: set = set()
         self.protect_re = None
         self.surfaces: set[str] = set()
 
@@ -64,13 +65,20 @@ class Dictionary:
             if len(t) >= 3:
                 self.surfaces.add(t.lower())
 
-    def add_id(self, nid: str):
+    def add_id(self, nid: str, core: str = ""):
         if not nid or not re.search(r"\d{3,}", nid):
             return
         self.ids.add(nid)
-        core = P.id_core(nid)
         if len(core) >= 5:
             self.id_cores.add(core)
+
+    def add_village(self, v: str):
+        toks = tuple(name_key(t) for t in split_name(v) if name_key(t))
+        if toks and sum(len(t) for t in toks) >= 4:
+            self.village_keys.add(toks)
+            for t in split_name(v):
+                if len(t) >= 4:
+                    self.surfaces.add(t.lower())
 
     def finalize(self, orgs, doctors):
         for k in sorted(self.name_keys):
@@ -91,13 +99,32 @@ def walk_json(obj, ptr="", parents=(), rtype=None):
             if isinstance(v, (dict, list)):
                 yield from walk_json(v, f"{ptr}/{kp}", parents + (str(k),), rt)
             else:
-                yield f"{ptr}/{kp}", str(k), v, parents, rt
+                yield f"{ptr}/{kp}", str(k), v, parents, rt, obj
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
             if isinstance(v, (dict, list)):
                 yield from walk_json(v, f"{ptr}/{i}", parents, rtype)
             else:
-                yield f"{ptr}/{i}", parents[-1] if parents else "", v, parents, rtype
+                yield f"{ptr}/{i}", parents[-1] if parents else "", v, parents, rtype, None
+
+
+_EXT_HINTS = [(re.compile(r"(?i)name|mother|father|spouse|relative|guardian|kin|husband|wife"), "relative"),
+              (re.compile(r"(?i)phone|mobile|contact|telecom"), "phone"),
+              (re.compile(r"(?i)aadha?a?r|uid"), "aadhaar"), (re.compile(r"(?i)abha|health-?id"), "abha"),
+              (re.compile(r"(?i)birth|dob"), "dob"), (re.compile(r"(?i)address|village|locality"), "address")]
+
+
+def ext_kind(container) -> str | None:
+    """FHIR extensions / key-value pairs carry their meaning in a sibling 'url'/'key'/'label'."""
+    if not isinstance(container, dict):
+        return None
+    hint = container.get("url") or container.get("key") or container.get("label") or container.get("field")
+    if not isinstance(hint, str):
+        return None
+    for rx, kind in _EXT_HINTS:
+        if rx.search(hint.rsplit("/", 1)[-1]):
+            return kind
+    return None
 
 
 def get_ptr(obj, ptr):
@@ -177,9 +204,19 @@ class Pipeline:
                 self.D.add_name(n, "relative")
             for i in a["ids"]:
                 self.D.add_id(i)
+            for c in a["cores"]:
+                if len(c) >= 5:
+                    self.D.id_cores.add(c)
+            for v in a["villages"]:
+                self.D.add_village(v)
+            for v in a["tehsils"] + a["districts"]:
+                self.D.place_keys.add(tuple(name_key(t) for t in split_name(v) if name_key(t)))
         for u in self.units:
             a = u.attrs
-            a["ids"] |= {c for c in a["cand_ids"] if c in self.D.ids}
+            for c in sorted(a["cand_ids"]):
+                if c in self.D.ids:
+                    a["ids"].add(c)
+                    a["cores"].add(a["cand_cores"].get(c, ""))
             u.has_identity = bool(a["names"] or a["ids"] or a["aadhaar"] or a["abha"] or a["phones"])
         self.D.finalize(self.orgs, self.doctors)
         self.log.stage(f"extracted {len(self.units)} records")
@@ -226,8 +263,10 @@ class Pipeline:
                 sub = get_ptr(d.obj, ptr) if ptr else d.obj
                 base_parents = tuple(p.replace("~1", "/").replace("~0", "~") for p in ptr.split("/")[1:] if not p.isdigit())
                 name_groups = defaultdict(list)
-                for p, k, v, parents, rt in walk_json(sub, ptr, base_parents):
+                for p, k, v, parents, rt, cont in walk_json(sub, ptr, base_parents):
                     kind = X.classify_key(k, parents, rt if d.fmt == "fhir" else None)
+                    if k.startswith("value") or k in ("val", "data"):
+                        kind = ext_kind(cont) or kind
                     if isinstance(v, str):
                         self._dx(u, v)
                     if kind == "org":
@@ -329,6 +368,7 @@ class Pipeline:
         for i, c in enumerate(assign):
             if c is not None:
                 groups[c].append(i)
+        self.groups = groups
         used = {}
         self.cluster_of = {}
         for c in sorted(groups, key=lambda c: min(f"{self.unit_doc[i].rel}#{self.units[i].loc}" for i in groups[c])):
@@ -353,7 +393,7 @@ class Pipeline:
                 continue
             for i in u.attrs["ids"]:
                 idmap[i].add(u.psn)
-                core = P.id_core(i)
+            for core in u.attrs["cores"]:
                 if len(core) >= 5:
                     coremap[core].add(u.psn)
         self.D.id_to_psn = {k: next(iter(v)) for k, v in sorted(idmap.items()) if len(v) == 1}
@@ -477,6 +517,8 @@ class Pipeline:
                         new[nk] = tr(v, f"{ptr}/{kp}", parents + (str(k),), rt, ctx)
                     else:
                         kind = X.classify_key(k, parents, rt if is_fhir else None)
+                        if str(k).startswith("value") or str(k) in ("val", "data"):
+                            kind = ext_kind(o) or kind
                         new[nk] = self._leaf(kind, v, ctx, d)
                 return new
             if isinstance(o, list):
