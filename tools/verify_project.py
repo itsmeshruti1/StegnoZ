@@ -95,7 +95,15 @@ def main():
     run("mutated_run", py + ["main.py", "--input", str(mutated), "--output", str(mutated_release), "--allow-risk-miss"])
     run("mutated_contract", py + [str(toolkit / "validate_output.py"), "--input", str(mutated), "--output", str(mutated_release)], "CONTRACT OK")
     practice_check("mutated_check", mutated_release, mutated_truth)
-    run("strict_run", py + ["main.py", "--input", str(inp), "--output", str(work / "strict_release")], expected=1)
+    # The fail-closed default must PUBLISH on the practice data: since the risk model
+    # measures the attacker's join surface rather than release-internal uniqueness, the
+    # target is met without --allow-risk-miss. An exit of 1 here would mean the release
+    # was withheld again, which is a regression worth catching.
+    strict_release = work / "strict_release"
+    run("strict_run", py + ["main.py", "--input", str(inp), "--output", str(strict_release)], expected=0)
+    run("strict_contract", py + [str(toolkit / "validate_output.py"), "--input", str(inp),
+                                 "--output", str(strict_release)], "CONTRACT OK")
+    practice_check("strict_check", strict_release, toolkit / "dev/truth/truth.json")
     results["input_unchanged"] = {"passed": before == digests(inp)}
     summary = {"python": sys.version, "platform": platform.platform(), "limits": limits,
                "checks": results, "passed": all(r["passed"] for r in results.values())}
