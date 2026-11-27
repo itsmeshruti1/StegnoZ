@@ -308,7 +308,7 @@ If a candidate node leaves residual outlier patients exposed (e.g., an elderly r
 
 ### 4. Cryptographic Keyed Pseudonyms & Secret Date Shifting
 * **Pseudonym Derivation:** Pseudonyms are computed via keyed HMAC-SHA256 initialized with `RAKSHA_SECRET` ($K_{\text{secret}}$):
-  $$\text{PsN} = \operatorname{HMAC-SHA256}(\text{IdentityToken}, K_{\text{secret}})[0:12]$$
+  $$\text{PsN} = \text{HMAC-SHA256}(\text{IdentityToken}, K_{\text{secret}})[0:12]$$
   This completely defeats Attack A6 (Pseudonym Inversion) and Attack A7 (Cross-Release Linkability).
 * **Length-of-Stay Invariant Shifting:** Every encounter date for patient $i$ is shifted by an invariant, keyed secret delta $\Delta_i \in [21, 180]\text{ days}$:
   $$t_{\text{published}} = t_{\text{actual}} + \Delta_i$$
