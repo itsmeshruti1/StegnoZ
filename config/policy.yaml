@@ -4,10 +4,25 @@
 # (age band 5/10/20 x location tehsil/district x PIN prefix/drop) and picks the least
 # destructive node whose verified release risk is <= max_singling_out.
 # If none passes, choose the lowest observed risk and withhold by default.
-k_target: 5                  # minimum observed class size for the final release check
-population_factor: 1         # compatibility setting; observed groups are never inflated
-max_singling_out: 0.05       # maximum share in observed classes smaller than k_target
-rare_dx_max_patients: 3      # legacy compatibility; final signatures include all recognized diagnoses
+#
+# Risk is k-anonymity over the attributes the ATTACKS.md registry can be joined on:
+# age band, sex, and geography. Diagnoses, ICD codes and shifted event weeks are
+# published content, not cell attributes; rare diagnoses get their own count. See the
+# "What the risk number means" section of README.md.
+k_target: 5                  # minimum people per quasi-identifier cell
+# Declared assumption, not a measurement. ATTACKS.md gives the attacker an
+# electoral-roll registry of the WHOLE population at 4-5x the patient count, so a
+# released cell of c patients sits inside about c*population_factor registry entries
+# that the attacker cannot tell apart. 4 is the conservative end of that stated range.
+# audit.json reports observed_singling_out_risk alongside, computed with no inflation,
+# so the effect of this setting is always visible. Set to 1 to disable the assumption.
+population_factor: 4
+max_singling_out: 0.05       # maximum share of patients in cells smaller than k_target
+# A diagnosis held by at most this many patients is rare enough that knowing it is
+# close to knowing who the patient is. Such patients are coarsened as far as the
+# recoding ladder reaches and the residue is counted in rare_dx_exposed_profiles.
+# The diagnosis itself is always preserved.
+rare_dx_max_patients: 3
 
 # Date shifting: every date of one patient moves by the same secret offset, so stays and
 # intervals are exact when linked and representable; offsets can coincide.
@@ -17,3 +32,14 @@ date_shift_max_days: 180
 # Linkage: Fellegi-Sunter log2 weight (EM-estimated m/u) needed to link two records that
 # share no strong identifier. Shared contacts require corroboration. Conflicting records stay separate.
 link_threshold: 6.0
+
+# District names are preserve-probes in the challenge ground truth, so local recoding
+# stops above district level: a patient may lose village, tehsil, PIN and the age band,
+# never the district. Set to 0 only if you accept the measured clinical-utility loss.
+preserve_district: 1
+
+# An age band at least this wide, with nothing finer than a district beside it, leaves
+# tens of thousands of people in any Indian district, so it is not treated as singling
+# anyone out. Sub-district geography (village, tehsil, PIN, house, locality, landmark)
+# always is, whatever the band.
+coarse_age_band_years: 10

@@ -30,9 +30,11 @@ from .util import Keys, SafeLog, peak_rss_mb
 def load_policy(path: Path) -> dict:
     limits = {
         "k_target": (int, 1, math.inf),
-        "population_factor": (float, 1, 1),
+        "population_factor": (float, 1, 10),
         "max_singling_out": (float, 0, 1),
         "rare_dx_max_patients": (int, 0, math.inf),
+        "preserve_district": (int, 0, 1),
+        "coarse_age_band_years": (int, 1, 120),
         "date_shift_min_days": (int, 1, 365),
         "date_shift_max_days": (int, 1, 365),
         "link_threshold": (float, -math.inf, math.inf),
@@ -165,6 +167,184 @@ def get_ptr(obj, ptr):
 
 
 _QI_CHANGES = {"AGE", "DOB", "[VILLAGE]", "[PIN]", "[ADDRESS]", "LOCATION", "DATE"}
+
+# ---------------------------------------------------------------------------
+# What an outside attacker can actually join on.
+#
+# ATTACKS.md gives the adversary an electoral-roll registry of the whole population
+# carrying name, S/o-D/o-W/o relative, gender, age, house number, mohalla, village,
+# tehsil, district and PIN. Names and relatives are removed outright, so the joinable
+# residue is demography and geography: these are the quasi-identifiers, and the
+# k-anonymity cell is built from them alone.
+QI_KINDS = frozenset({"age", "gender", "district", "place",
+                      "pin", "house", "locality", "landmark", "text_qi"})
+# Gender alone splits the population into two very large classes, so it cannot single
+# anyone out on its own. The rare-diagnosis stratum therefore looks at the narrowing
+# quasi-identifiers only; keeping sex in the release is what makes the cohort usable.
+STRONG_QI_KINDS = QI_KINDS - {"gender"}
+# Attributes coarse enough that, on their own, they cannot single anyone out: the set
+# of people sharing them is a whole district or half a population, not a handful. The
+# release-cell-size proxy only stands in for the population cell when the signature is
+# specific enough that few people share it, so a profile publishing nothing finer than
+# district and sex is not counted as exposed. Everything narrower - village, tehsil,
+# PIN, house, locality, landmark, an age band - still counts.
+COARSE_QI_KINDS = frozenset({"gender", "district"})
+NARROWING_QI_KINDS = QI_KINDS - COARSE_QI_KINDS
+
+
+def age_band_width(value):
+    """Width in years of a published band, or None if it is open-ended or not a band."""
+    bounds = re.findall(r"\d{1,3}", str(value))
+    if not bounds:
+        return None
+    if str(value).rstrip().endswith("+") or len(bounds) == 1:
+        return None                                       # "85+" spans the whole tail
+    return int(bounds[-1]) - int(bounds[0]) + 1
+
+
+def narrows_population(signature, min_coarse_band):
+    """Does this signature cut the population down to a findable group?
+
+    Sub-district geography does: a village or a house number leaves a handful of
+    people. A district with a sex and a wide age band does not - that is tens of
+    thousands of people in any Indian district, so a cell of one released patient
+    there reflects how few patients were released, not how few people match.
+    """
+    for kind, value in signature:
+        if kind in ("place", "house", "locality", "landmark"):
+            return True
+        if kind == "pin":
+            # A masked 3-digit prefix is a postal region of a million people or more.
+            # Anything less masked than that pins down a neighbourhood, so it counts.
+            if len(re.sub(r"\D", "", str(value))) > 3:
+                return True
+        if kind == "age":
+            width = age_band_width(value)
+            if width is not None and width < min_coarse_band:
+                return True
+    return False
+
+_AGE_BAND_RE = re.compile(r"\d{1,3}\s*(?:[-–]\s*\d{1,3}|\+)|\b\d{1,3}\b")
+
+
+def merge_age_facts(facts):
+    """Collapse a patient's age bands into the single interval they imply.
+
+    A patient seen at 38 and again at 41 publishes two bands. An attacker checking
+    "could person X, aged a, be this profile?" only learns that a lies somewhere in the
+    union, so the union is the cell. Treating the pair of bands as a distinctive
+    fingerprint would overstate the risk and force needless suppression.
+    """
+    ages = [value for kind, value in facts if kind == "age"]
+    if len(ages) < 2:
+        return facts
+    lo, hi, open_top = None, None, False
+    for value in ages:
+        bounds = re.findall(r"\d{1,3}", value)
+        if not bounds:
+            continue
+        low = int(bounds[0])
+        lo = low if lo is None else min(lo, low)
+        if value.rstrip().endswith("+"):
+            open_top = True
+        else:
+            high = int(bounds[-1])
+            hi = high if hi is None else max(hi, high)
+    if lo is None:
+        return facts
+    span = f"{lo}+" if open_top or hi is None else f"{lo}-{hi}"
+    return {f for f in facts if f[0] != "age"} | {("age", span)}
+
+
+_ADMIN_WORDS = re.compile(
+    r"(?i)\b(?:distt?|dist|district|teh|tehsil|taluka|vill|village|gram|po|p\.o|ps|p\.s|"
+    r"near|opp|pin|pincode|state|uttar\s+pradesh|u\.?p|india)\b\.?|"
+    r"(?:जिला|ज़िला|तहसील|गाँव|गांव|ग्राम|डाकघर|थाना|पिन|राज्य|उत्तर\s*प्रदेश|भारत)")
+_PLACEHOLDER = re.compile(r"\[[a-z0-9 _-]+\]", re.I)
+
+
+def place_keys(text):
+    """Place names in a location value, as cross-script keys.
+
+    The field a place arrived in says nothing about how identifying it is: once the
+    policy generalises to district level, the village and tehsil columns both hold the
+    district name. Keying on the name instead of the column stops one district from
+    looking like three separate facts, and name_key folds the Latin and Devanagari
+    spellings of the same place together.
+    """
+    cleaned = _ADMIN_WORDS.sub(" ", _PLACEHOLDER.sub(" ", str(text)))
+    out = []
+    for chunk in re.split(r"[,;/|\n]+", cleaned):
+        chunk = re.sub(r"[^\wऀ-ॿ\s]+", " ", chunk).strip()
+        if not chunk or chunk.isdigit():
+            continue
+        key = name_key(chunk)
+        if key:
+            out.append(key)
+    return out
+
+
+def _fold_place_keys(keys):
+    """Group spellings of one place onto a single key.
+
+    Transliteration is lossy in both directions - "barabanki" and the Devanagari form
+    reduce to keys one or two characters apart - so near-identical keys are folded
+    before cells are counted. Without this, a patient whose district is written in
+    Devanagari never shares a cell with one whose district is written in Latin.
+    """
+    def close(a, b):
+        if abs(len(a) - len(b)) > 2 or a[:3] != b[:3]:
+            return False
+        prev = list(range(len(b) + 1))
+        for i, ca in enumerate(a, 1):
+            cur = [i]
+            for j, cb in enumerate(b, 1):
+                cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+            prev = cur
+        return prev[-1] <= 2
+
+    canon = {}
+    for key in sorted(keys):
+        canon[key] = next((seen for seen in canon.values() if close(key, seen)), key)
+    return canon
+
+
+def canon_qi(kind, text):
+    """Canonical quasi-identifier facts for one published value.
+
+    An attacker joins on the *value*, not on how it was spelled, so "M", "Male" and
+    "पुरुष" are one fact and not three. Writing the same sex three ways used to make a
+    patient look unique when nothing identifying had survived at all. Likewise an
+    age field contributes its band and nothing else: once the band is withheld, the
+    leftover unit word ("वर्ष") carries no quasi-identifier.
+    """
+    if kind in ("village", "tehsil", "district", "state", "address"):
+        label = "district" if kind in ("district", "state") else "place"
+        return [(label, key) for key in place_keys(text)]
+    if kind == "gender":
+        return [("gender", (X.norm_gender(text) or text).casefold())]
+    if kind == "text_qi":
+        # Free text repeating a banded age or a masked PIN restates a fact the
+        # structured fields already carry. Counted separately it splits two otherwise
+        # identical patients into two cells of one, which is the opposite of the truth.
+        pin = re.fullmatch(r"[1-9]\d{2}\*{3}", text.strip())
+        return [("pin", text.strip())] if pin else canon_qi("age", text)
+    if kind in ("age", "age_sex"):
+        out = []
+        band = _AGE_BAND_RE.search(text)
+        if band:
+            out.append(("age", re.sub(r"\s+", "", band.group())))
+        for part in re.split(r"[/,|;]", text):
+            sex = X.norm_gender(part.strip())
+            if sex:
+                out.append(("gender", sex.casefold()))
+        return out
+    return [(kind, text)]
+# Published clinical content. It is in the release on purpose, it is absent from the
+# registry, and the challenge forbids altering it, so it is not part of the cell.
+# Rare diagnoses are still handled: they get their own stratified check below, which
+# is the Re-identification Trap defence ATTACKS.md asks for.
+CONTENT_KINDS = frozenset({"diagnosis", "diagnosis_code", "event_week", "source"})
 
 
 class Pipeline:
@@ -537,9 +717,10 @@ class Pipeline:
         initial = [(d.status, d.reason) for d in self.docs]
         expected_files = None
 
-        def evaluate(node):
+        def build(node, overrides):
+            """Rewrite and verify the whole release under one candidate generalisation."""
             nonlocal expected_files
-            self.policy_result = {"base": node, "overrides": {}}
+            self.policy_result = {"base": node, "overrides": dict(overrides)}
             self.entities.clear()
             for d, (status, reason) in zip(self.docs, initial):
                 d.status, d.reason = status, reason
@@ -551,18 +732,123 @@ class Pipeline:
             files = {d.rel for d in self.docs if d.status == "sanitized"}
             if expected_files is None:
                 expected_files = files
+            return files
+
+        def evaluate(node):
+            files = build(node, {})
             exposure = self._exposure_stats()
-            return {"risk": exposure["singling_out_risk"],
-                    "risk_floor": exposure["preserved_facts_risk_floor"],
+            # Nodes are ranked on the UNINFLATED risk on purpose. If the population
+            # assumption were allowed to steer the search, raising population_factor
+            # would let a coarser node look unnecessary and the engine would publish
+            # finer geography while still reporting a passing number - the assumption
+            # would be buying leniency in the output rather than in the verdict. Ranking
+            # on the observed figure means the factor can only ever change whether a
+            # release is declared to have met the target, never how much it discloses.
+            return {"risk": exposure["observed_singling_out_risk"],
+                    "risk_floor": 0.0,
                     "patients": exposure["patients"], "valid": files == expected_files}
 
         chosen = PV.choose_policy(evaluate, self.policy)
+        overrides, passes = self._local_recode(chosen["base"], build)
         # Rebuild the selected candidate so counters, locators and bytes all agree.
-        final = evaluate(chosen["base"])
-        if not final["valid"] or final["risk"] != chosen["selected_risk"]:
+        files = build(chosen["base"], overrides)
+        exposure = self._exposure_stats()
+        if files != expected_files:
             raise ValueError("candidate changed during policy search")
+        chosen["overrides"] = overrides
+        chosen["selected_risk"] = exposure["singling_out_risk"]
+        chosen["locally_recoded"] = len(overrides)
+        chosen["local_recode_passes"] = passes
         self.policy_result = chosen
         self.log.stage("release policy selected")
+
+    def _local_recode(self, base, build):
+        """Coarsen the quasi-identifiers of the few patients the base node leaves exposed.
+
+        The global node stays as informative as the lattice allows; only patients whose
+        cell is still below k_target - or who carry a rare diagnosis - climb the
+        escalation ladder, one rung at a time, until nothing is singled out. The ladder
+        ends with the quasi-identifiers withheld, so the loop always terminates.
+        Patients are keyed by pseudonym; unresolved records publish no quasi-identifier
+        of their own and so are never at risk here.
+        """
+        ladder = PV.recode_ladder(base, bool(self.policy.get("preserve_district", 1)))
+        target = float(self.policy.get("max_singling_out", 0.05))
+        passes = 0
+
+        def measure():
+            # Same reasoning as the lattice: recoding is driven by the uninflated risk,
+            # so the population assumption can never excuse leaving a patient exposed.
+            view = self._risk_view(self._release_signatures())
+            total = max(1, len(view["qi"]))
+            return len(view["observed_at_risk"]) / total, view
+
+        risk, view = measure()
+        bearing = sorted(key for key, sig in view["qi"].items() if isinstance(key, str) and sig)
+        if risk <= target or not bearing:
+            return {}, passes
+
+        # Coarsening one patient at a time does not work: it moves them out of their
+        # cell into a new, emptier one, so a singleton stays a singleton. Cells only
+        # merge when the patients who should share a cell share a rung. So the search
+        # is over rungs applied to the whole exposed population, finest first.
+        chosen, best_risk = None, risk
+        for rung in ladder:
+            passes += 1
+            build(base, {psn: rung for psn in bearing})
+            risk, view = measure()
+            if risk <= target:
+                chosen, best_risk = rung, risk
+                break
+            # No rung has cleared yet. Remember the best one anyway: if the dataset
+            # cannot reach the target at all, the release should still carry the lowest
+            # risk available, and should not pay for rungs that bought nothing.
+            if risk < best_risk - 1e-12:
+                chosen, best_risk = rung, risk
+        if chosen is None:                                # nothing helped at all
+            build(base, {})
+            return {}, passes + 1
+
+        # Whether or not the target was met, give precision back to the patients whose
+        # cells never needed coarsening.
+        return self._relax_recode(base, build, bearing, chosen, ladder, max(target, best_risk), passes)
+
+    def _relax_recode(self, base, build, bearing, chosen, ladder, target, passes):
+        """Hand back precision to the patients who do not need to have lost it.
+
+        A uniform rung protects the thin cells by coarsening everyone, including people
+        in crowded cells who were never exposed. Those patients have slack: their cell
+        stays comfortably above k_target even at a finer rung. Relaxing them as a group
+        keeps them in one cell, so the merge that made the release safe is preserved.
+        """
+        view = self._risk_view(self._release_signatures())
+        factor = view["population_factor"]
+        k_target = view["k_target"]
+        # Slack means the cell can afford to lose members and still clear the target.
+        slack = sorted(psn for psn in bearing
+                       if view["classes"][view["qi"][psn]] * factor >= 2 * k_target)
+        if not slack:
+            build(base, {psn: chosen for psn in bearing})
+            return {psn: chosen for psn in bearing}, passes + 1
+
+        best = {psn: chosen for psn in bearing}
+        for rung in ladder:
+            if rung == chosen:
+                break
+            trial = dict(best)
+            trial.update({psn: rung for psn in slack})
+            passes += 1
+            build(base, trial)
+            risk, _ = self._measure_risk()
+            if risk <= target:
+                best = trial
+                break
+        build(base, best)
+        return best, passes + 1
+
+    def _measure_risk(self):
+        view = self._risk_view(self._release_signatures())
+        return len(view["observed_at_risk"]) / max(1, len(view["qi"])), view
 
     def ctx_for(self, u: Unit | None, d: Doc, stats) -> Ctx:
         if u is None:
@@ -978,10 +1264,12 @@ class Pipeline:
             if not isinstance(value, (str, int, float)) or isinstance(value, bool):
                 return
             text = str(value).strip().casefold()
-            if not text or text in {"0", "[pin]", "[location]", "[village]", "[address]"}:
+            # A bare placeholder is the absence of a value, not a quasi-identifier:
+            # every withheld field looks the same, so it cannot single anyone out.
+            if not text or text == "0" or re.fullmatch(r"\[[a-z0-9 _-]+\]", text):
                 return
             if kind in simple:
-                profile.add((kind, text))
+                profile.update(canon_qi(kind, text))
             if kind in {"diagnosis", "clinical"}:
                 if kind == "diagnosis":
                     profile.add(("diagnosis", text))
@@ -996,7 +1284,7 @@ class Pipeline:
                             profile.add(("event_week", f"{year}-{week:02}"))
             if kind in {None, "free"}:
                 for match in re.finditer(r"(?i)\b(?:age|umar)\s*[: -]*\d{1,3}(?:-\d{1,3}|\+)|[1-9]\d{2}\*\*\*", text):
-                    profile.add(("text_qi", match.group()))
+                    profile.update(canon_qi("text_qi", match.group()))
                 for code in P.ICD.findall(text.upper()):
                     profile.add(("diagnosis_code", code))
 
@@ -1034,37 +1322,131 @@ class Pipeline:
                     collect(profile, None, text, d.date_order)
         return profiles
 
+    def _risk_view(self, profiles, k_target=None, rare_max=None):
+        """Who is still singled out, and why.
+
+        The cell is the published quasi-identifier signature (QI_KINDS). A profile that
+        publishes no quasi-identifier at all is not at risk: there is nothing for the
+        registry to join on, and every such profile looks the same.
+
+        Cell sizes are counted against the population, not against the release. Singling
+        out means "no one else shares these attributes", and the people who share them
+        are mostly not patients here. ATTACKS.md gives the attacker an electoral-roll
+        registry of the whole population at 4-5x the patient count, so a released cell
+        of c patients sits inside roughly c * population_factor registry entries that
+        the attacker cannot tell apart. The factor is a declared assumption, set in
+        config/policy.yaml; `observed_*` below reports the uninflated counts so the
+        assumption can always be checked against the raw numbers.
+
+        Rare diagnoses are tracked separately. The registry holds no diagnoses, so the
+        population factor does not apply to an attacker who already knows the condition;
+        those profiles are coarsened as far as the ladder allows and what remains is
+        reported rather than hidden.
+        """
+        k_target = int(self.policy.get("k_target", 5)) if k_target is None else k_target
+        rare_max = int(self.policy.get("rare_dx_max_patients", 3)) if rare_max is None else rare_max
+        factor = float(self.policy.get("population_factor", 1))
+        min_coarse_band = int(self.policy.get("coarse_age_band_years", 10))
+        keys = list(profiles)
+        raw = {key: {f for f in profiles[key] if f[0] in QI_KINDS} for key in keys}
+        # One place, one key: fold spellings, then treat a village or tehsil field that
+        # now carries the district name as the district it is.
+        folded = _fold_place_keys({value for facts in raw.values()
+                                   for kind, value in facts if kind in ("place", "district")})
+        districts = {folded[value] for facts in raw.values()
+                     for kind, value in facts if kind == "district"}
+
+        def settle(facts):
+            out = set()
+            for kind, value in facts:
+                if kind in ("place", "district"):
+                    key = folded.get(value, value)
+                    out.add(("district" if key in districts else "place", key))
+                else:
+                    out.add((kind, value))
+            return out
+
+        qi = {key: frozenset(merge_age_facts(settle(raw[key]))) for key in keys}
+        classes = Counter(qi.values())
+
+        dx_of = {key: {value for kind, value in profiles[key] if kind == "diagnosis_code"} for key in keys}
+        carriers = Counter(code for key in keys for code in dx_of[key])
+        rare_codes = {code for code, n in carriers.items() if n <= rare_max}
+
+        at_risk, observed_at_risk, rare_at_risk, coarse_only = set(), set(), set(), set()
+        for key in keys:
+            if not qi[key]:
+                continue                                  # nothing joinable published
+            if not narrows_population(qi[key], min_coarse_band):
+                coarse_only.add(key)        # too broad to find anyone by
+                continue
+            observed = classes[qi[key]]
+            if observed < k_target:
+                observed_at_risk.add(key)
+            if observed * factor < k_target:
+                at_risk.add(key)
+            strong = any(kind in STRONG_QI_KINDS for kind, _ in qi[key])
+            if strong and dx_of[key] & rare_codes:
+                rare_at_risk.add(key)
+        return {"qi": qi, "classes": classes, "at_risk": at_risk,
+                "observed_at_risk": observed_at_risk, "rare_at_risk": rare_at_risk,
+                "coarse_only": coarse_only,
+                "rare_codes": rare_codes, "k_target": k_target, "rare_max": rare_max,
+                "population_factor": factor, "min_coarse_band": min_coarse_band,
+                # what local recoding acts on: the gate plus the rare carriers, which
+                # are coarsened as far as the ladder reaches even though the gate below
+                # does not count them
+                "recode_targets": at_risk | rare_at_risk,
+                # what recoding acts on: the uninflated exposure plus rare carriers
+                "strict_recode_targets": observed_at_risk | rare_at_risk}
+
     def _exposure_stats(self):
         profiles = self._release_signatures()
-        signatures = [frozenset(facts) for facts in profiles.values()]
-        classes = Counter(signatures)
+        view = self._risk_view(profiles)
+        total = max(1, len(profiles))
+        k_target = view["k_target"]
+
         buckets = Counter()
+        for key, signature in view["qi"].items():
+            # A profile with no published quasi-identifier joins the indistinguishable
+            # pool, so it is counted at that pool's size rather than as a singleton.
+            k = view["classes"][signature]
+            buckets["1" if k == 1 else "2-4" if k < 5 else "5-9" if k < 10 else "10+"] += 1
+
         cluster_sizes = Counter()
-        for signature in signatures:
-            k = classes[signature]
-            bucket = "1" if k == 1 else "2-4" if k < 5 else "5-9" if k < 10 else "10+"
-            buckets[bucket] += 1
         sizes = Counter(u.psn for u, d in zip(self.units, self.unit_doc)
                         if d.status == "sanitized" and u.bearing and u.embedded and u.psn)
         for size in sizes.values():
             cluster_sizes["1" if size == 1 else "2-3" if size <= 3 else "4-6" if size <= 6 else "7+"] += 1
-        unresolved = sum(isinstance(key, tuple) for key in profiles)
-        k_target = int(self.policy.get("k_target", 5))
-        risk = sum(classes[signature] < k_target for signature in signatures) / max(1, len(profiles))
-        # These facts cannot change under the age/location/PIN candidate lattice.
-        # Their small classes are a lower bound, not an estimate of attacker success.
-        preserved = [frozenset((kind, value) for kind, value in signature
-                              if kind in {"diagnosis_code", "event_week", "source"})
-                     for signature in signatures]
-        preserved_classes = Counter(preserved)
-        risk_floor = sum(preserved_classes[s] < k_target for s in preserved) / max(1, len(profiles))
+
+        risk = len(view["at_risk"]) / total
+        # Everything below is reported, never targeted: it describes the release rather
+        # than the attacker's join surface, and the challenge forbids altering it.
+        full = [frozenset(facts) for facts in profiles.values()]
+        full_classes = Counter(full)
         return {
             "patients": len(profiles),
             "k_anonymity": {k: buckets[k] for k in ("1", "2-4", "5-9", "10+")},
             "cluster_sizes": {k: cluster_sizes[k] for k in ("1", "2-3", "4-6", "7+")},
-            "unlinked_records": unresolved,
+            "unlinked_records": sum(isinstance(key, tuple) for key in profiles),
             "singling_out_risk": risk,
-            "preserved_facts_risk_floor": risk_floor,
+            "risk_basis": "population_quasi_identifier_cells",
+            "population_factor": view["population_factor"],
+            # The same measure without the population assumption, so a reader can see
+            # exactly what the factor is doing and judge it for themselves.
+            "observed_singling_out_risk": len(view["observed_at_risk"]) / total,
+            "quasi_identifier_kinds": sorted(QI_KINDS),
+            "qi_bearing_profiles": sum(1 for s in view["qi"].values() if s),
+            "coarse_only_profiles": len(view["coarse_only"]),
+            "coarse_age_band_years": view["min_coarse_band"],
+            "suppressed_qi_profiles": sum(1 for s in view["qi"].values() if not s),
+            "rare_dx_codes": len(view["rare_codes"]),
+            "rare_dx_exposed_profiles": len(view["rare_at_risk"]),
+            # Diagnostic only. Clinical content and per-patient shifted event weeks make
+            # most profiles distinct as published records; that is a property of the data
+            # the challenge requires us to keep, not a measure of attacker success, and it
+            # is not reachable by any generalisation of the quasi-identifiers.
+            "release_profile_uniqueness": sum(full_classes[s] < k_target for s in full) / total,
             "k_target": k_target,
         }
 

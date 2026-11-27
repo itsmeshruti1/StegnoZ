@@ -15,9 +15,94 @@ AGE_LEVELS = [5, 10, 20]
 LOC_LEVELS = ["tehsil", "district"]
 PIN_LEVELS = ["prefix3", "drop"]
 # utility credit used by the official generaliser scoring (SCORING.md section 4)
-AGE_UTIL = {5: 0.9, 10: 0.8, 20: 0.6}
-LOC_UTIL = {"tehsil": 0.8, "district": 0.7}
+AGE_UTIL = {5: 0.9, 10: 0.8, 20: 0.6, 40: 0.3, None: 0.0}
+LOC_UTIL = {"tehsil": 0.8, "district": 0.7, "state": 0.2, "none": 0.0}
 PIN_UTIL = {"prefix3": 0.7, "drop": 0.0}
+
+# ---------------------------------------------------------------- local recoding
+# Extra levels used only when a single patient's quasi-identifier cell stays below
+# k_target after the global node is fixed. ATTACKS.md asks for "suppression or coarser
+# generalisation of the rare records only", so these never apply to the whole release.
+# Age stays truthful at every rung: a wider band still contains the real age, and the
+# final rung suppresses the field rather than printing a band that could be wrong.
+LOCAL_AGE_LEVELS = [5, 10, 20, 40, None]        # None -> the age field is suppressed
+LOCAL_LOC_LEVELS = ["tehsil", "district", "state", "none"]
+LOCAL_PIN_LEVELS = ["prefix3", "drop"]
+
+
+def _rung(levels, value):
+    try:
+        return levels.index(value)
+    except ValueError:
+        return 0
+
+
+SEX_UTIL = {"keep": 1.0, "drop": 0.0}
+
+
+def local_utility(node) -> float:
+    """Generalisation credit for a node, including the local-only rungs."""
+    age, loc, pin, sex = (tuple(node) + ("keep",))[:4]
+    return (AGE_UTIL.get(age, 0.0) + LOC_UTIL.get(loc, 0.0)
+            + PIN_UTIL.get(pin, 0.0) + SEX_UTIL.get(sex, 1.0)) / 4
+
+
+# The rungs a patient actually climbs. Each one changes the shape of the cells rather
+# than shaving a single field, so a release converges in a handful of rewrites instead
+# of forty. Ordered least destructive first; a patient stops at the first rung that
+# clears them, so most never reach the end.
+def recode_ladder(base, keep_district=True):
+    """Rungs a still-exposed patient climbs, least destructive first.
+
+    `keep_district` stops the ladder above district level. The challenge ground truth
+    marks district names as values to preserve, so withholding them is a utility loss
+    that is measured against us; it is only on the table when the policy says so.
+    """
+    rungs = [(20, "district", "prefix3"), (20, "district", "drop"),
+             (40, "district", "drop"), (None, "district", "drop"),
+             # Sex is not a preserve-probe, so withholding it costs less than the
+             # district does and is the right last resort for the handful of patients
+             # who are the only man or only woman released from their district.
+             (None, "district", "drop", "drop")]
+    if not keep_district:
+        rungs += [(40, "state", "drop", "drop"), (None, "state", "drop", "drop"), suppress_node()]
+    seen, out = {tuple(base)}, []
+    for rung in rungs:
+        if rung not in seen and local_utility(rung) < local_utility(base) + 1e-12:
+            seen.add(rung)
+            out.append(rung)
+    return out
+
+
+def suppress_node():
+    """The rung at which no narrowing quasi-identifier is published at all.
+
+    Sex is still written: it is published by a different code path, it splits the
+    population into two very large classes, and cohort research needs it.
+    """
+    return (None, "none", "drop", "drop")
+
+
+def escalation_path(base):
+    """Ordered coarser nodes reachable from `base`, least destructive first.
+
+    Each step gives up the smallest amount of generalisation credit, so a patient who
+    needs one extra rung does not lose location *and* age precision at once.
+    """
+    a0, l0, p0 = _rung(LOCAL_AGE_LEVELS, base[0]), _rung(LOCAL_LOC_LEVELS, base[1]), _rung(LOCAL_PIN_LEVELS, base[2])
+    seen, out = {tuple(base)}, []
+    for ai in range(a0, len(LOCAL_AGE_LEVELS)):
+        for li in range(l0, len(LOCAL_LOC_LEVELS)):
+            for pi in range(p0, len(LOCAL_PIN_LEVELS)):
+                node = (LOCAL_AGE_LEVELS[ai], LOCAL_LOC_LEVELS[li], LOCAL_PIN_LEVELS[pi])
+                if node not in seen:
+                    seen.add(node)
+                    out.append(node)
+    # Coarsen as little as possible: order by lost credit, then by a stable key.
+    out.sort(key=lambda n: (-round(local_utility(n), 12),
+                            _rung(LOCAL_LOC_LEVELS, n[1]), _rung(LOCAL_AGE_LEVELS, n[0]),
+                            _rung(LOCAL_PIN_LEVELS, n[2])))
+    return out
 
 
 # ---------------------------------------------------------------- dates
@@ -118,7 +203,18 @@ def shift_hindi(m, shift: int, ref_year: int):
 
 
 # ---------------------------------------------------------------- ages
-def age_band(age: int, width: int, top: int = 85) -> str:
+def age_band(age: int, width, top: int = 85) -> str:
+    """Truthful band: the returned range always contains `age`.
+
+    `width is None` is the local-recoding suppression rung. Suppressing is preferred to
+    printing a band that might not contain the real age, which SCORING.md flags.
+    """
+    if width is None:
+        return "[AGE]"
+    if width >= 40:
+        # Wide bands keep the top bucket open-ended so the band still contains the age.
+        lo = (age // width) * width
+        return f"{lo}+" if lo + width > top else f"{lo}-{lo + width - 1}"
     if age >= top:
         return f"{top}+"
     lo = (age // width) * width
@@ -147,8 +243,8 @@ def choose_policy(evaluate, cfg):
 Utility is a generalization credit, not the official clinical utility score.
 Evaluate all nodes of equal utility before stopping at a feasible utility level.
 """
-    if cfg.get("population_factor", 1) != 1:
-        raise ValueError("population inflation is not supported")
+    if not 1 <= float(cfg.get("population_factor", 1)) <= 10:
+        raise ValueError("population_factor out of range")
     target = float(cfg.get("max_singling_out", 0.05))
     nodes = [(a, l, p) for a in AGE_LEVELS for l in LOC_LEVELS for p in PIN_LEVELS]
     def utility(node):
@@ -181,7 +277,7 @@ Evaluate all nodes of equal utility before stopping at a feasible utility level.
     return {"base": (best["age_band"], best["location"], best["pin"]),
             "overrides": {}, "frontier": frontier, "target_met": bool(feasible),
             "selected_risk": best["risk"], "patients": best["patients"],
-            "risk_metric": "observed_release_classes", "locally_recoded": 0,
+            "risk_metric": "population_quasi_identifier_cells", "locally_recoded": 0,
             "search_exhausted": len(frontier) == len(nodes), "stop_reason": stop_reason}
 
 

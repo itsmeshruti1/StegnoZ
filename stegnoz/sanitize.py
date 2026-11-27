@@ -69,13 +69,16 @@ def _clean_view(text: str) -> str:
 
 class Ctx:
     """Per-record rewriting context."""
-    __slots__ = ("psn", "shift", "order", "age_w", "loc", "pin", "own_keys", "rel_keys", "tehsil", "district",
-                 "ref_year", "stats")
+    __slots__ = ("psn", "shift", "order", "age_w", "loc", "pin", "sex", "own_keys", "rel_keys",
+                 "tehsil", "district", "ref_year", "stats")
 
     def __init__(self, psn=None, shift=None, order="dmy", node=(5, "tehsil", "prefix3"), own_keys=(),
                  rel_keys=(), tehsil=None, district=None, ref_year=2026, stats=None):
         self.psn, self.shift, self.order = psn, shift, order
-        self.age_w, self.loc, self.pin = node
+        # Nodes are (age width, location level, PIN level) and optionally a fourth
+        # element for sex. Sex is only ever withheld by local recoding, as the last
+        # rung before a patient would otherwise have to give up their district.
+        self.age_w, self.loc, self.pin, self.sex = (tuple(node) + ("keep",))[:4]
         self.own_keys, self.rel_keys = set(own_keys), set(rel_keys)
         self.tehsil, self.district = tehsil, district
         self.ref_year = ref_year
@@ -417,6 +420,9 @@ class Sanitizer:
     def village_out(self, ctx):
         if ctx.loc == "tehsil" and ctx.tehsil:
             return ctx.tehsil
+        if ctx.loc in ("state", "none"):
+            # local recoding rung: everything below state level is withheld
+            return "[VILLAGE]"
         if ctx.district:
             return ctx.district
         return "[VILLAGE]"
@@ -431,7 +437,12 @@ class Sanitizer:
             if TEHSIL_RE.match(pp) and ctx.loc == "tehsil":
                 kept.append(pp)
                 continue
-            if DISTRICT_RE.match(pp) or re.match(r"^(?:Uttar Pradesh|UP|U\.P\.|India|उत्तर प्रदेश)\b", pp):
+            is_state = re.match(r"^(?:Uttar Pradesh|UP|U\.P\.|India|उत्तर प्रदेश)\b", pp)
+            if DISTRICT_RE.match(pp) or is_state:
+                if DISTRICT_RE.match(pp) and not is_state and ctx.loc in ("state", "none"):
+                    # local recoding rung: the district name itself is withheld
+                    dropped = True
+                    continue
                 pin = re.search(r"([1-9][0-9]{5})", P.norm_digits_keep(pp))
                 if pin:
                     pp = pp[:pin.start()].rstrip(" -") + " - " + PV.pin_out(pin.group(1), ctx.pin)
@@ -550,11 +561,28 @@ class Sanitizer:
                 self._count(ctx, f"[{kind.upper()}]")
             return out
         if kind == "tehsil":
-            out = v if ctx.loc == "tehsil" else (ctx.district or "[LOCATION]")
+            if ctx.loc == "tehsil":
+                out = v
+            elif ctx.loc in ("state", "none"):
+                out = "[LOCATION]"
+            else:
+                out = ctx.district or "[LOCATION]"
             if out != v:
                 self._count(ctx, "LOCATION")
             return out
-        if kind in ("district", "state", "gender", "relation"):
+        if kind == "district":
+            # Districts survive at every global node; only the local recoding rungs
+            # above district withhold them, and then only for the affected patient.
+            if ctx.loc in ("state", "none"):
+                self._count(ctx, "LOCATION")
+                return "[LOCATION]"
+            return v
+        if kind == "gender":
+            if ctx.sex == "drop":
+                self._count(ctx, "SEX")
+                return "[SEX]"
+            return v
+        if kind in ("state", "relation"):
             return v
         if kind == "dob":
             self._count(ctx, "DOB")
@@ -571,7 +599,13 @@ class Sanitizer:
                 return "[AGE]"
             band = PV.age_band(years, ctx.age_w)
             self._count(ctx, "AGE")
-            return band if is_num else s[:m.start()] + band + s[m.end():]
+            if is_num:
+                return band
+            out = s[:m.start()] + band + s[m.end():]
+            if kind == "age_sex" and ctx.sex == "drop":
+                # "41/M" would still publish the sex the node just withheld
+                out = re.sub(r"(?i)([/\\|,-]\s*)(?:M|F|Male|Female|पुरुष|महिला|स्त्री)\b", r"\1[SEX]", out)
+            return out
         if kind == "date":
             out = self._shift_value(s, ctx) if not is_num else "[DATE]"
             if out != v:

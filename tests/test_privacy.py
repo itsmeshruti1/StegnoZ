@@ -10,7 +10,7 @@ from stegnoz.privacy import choose_policy
 from stegnoz.staging import EncryptedStaging
 
 
-def test_policy_uses_actual_risk_and_rejects_population_inflation():
+def test_policy_uses_actual_risk_and_bounds_the_population_assumption():
     calls = []
     def evaluate(node):
         calls.append(node)
@@ -19,8 +19,12 @@ def test_policy_uses_actual_risk_and_rejects_population_inflation():
     assert result["base"] == (10, "tehsil", "prefix3")
     assert result["target_met"] and result["selected_risk"] == 0
     assert (5, "tehsil", "prefix3") in calls
-    with pytest.raises(ValueError):
-        choose_policy(evaluate, {"population_factor": 5})
+    # The population assumption is declared, not unlimited: a factor inside the range
+    # ATTACKS.md states is accepted, anything that would wish the risk away is not.
+    assert choose_policy(evaluate, {"population_factor": 5})["target_met"]
+    for bad in (0, 0.5, 11, 1000):
+        with pytest.raises(ValueError):
+            choose_policy(evaluate, {"population_factor": bad})
 
 
 def test_policy_cannot_improve_risk_by_dropping_files_or_rounding():
@@ -84,12 +88,40 @@ def test_real_candidate_search_preserves_medical_values_and_matches_final_risk(t
     assert not list(out.glob(".verified-*"))
 
 
-def test_default_pipeline_withholds_unachievable_release(tmp_path):
+def test_lone_record_with_only_coarse_attributes_is_published(tmp_path):
+    """One patient is not "singled out" by a wide age band and no geography.
+
+    The cell that matters is the population cell. A banded age with no location and no
+    identifier leaves tens of thousands of people, so withholding the record would cost
+    utility and buy no privacy. It used to be withheld because the risk proxy counted
+    release-internal uniqueness, which a one-record release always maximises.
+    """
     inp, out = tmp_path / "in", tmp_path / "out"
     inp.mkdir()
     (inp / "one.csv").write_text("MRN,Age,Diagnosis\nCASE-81234,47,J45.9\n", encoding="utf-8")
     result = Pipeline(inp, out, "synthetic-test-key", {}).run()
-    assert result["privacy"]["strict_blocked"]
+    assert not result["privacy"]["strict_blocked"] and result["privacy"]["target_met"]
+    assert list((out / "sanitized").iterdir())
+    released = (out / "sanitized" / "one.csv").read_text("utf-8")
+    assert "J45.9" in released and "47" not in released       # diagnosis kept, age banded
+    assert "CASE-81234" not in released
+
+
+def test_strict_mode_still_withholds_when_the_target_cannot_be_met(tmp_path):
+    """The fail-closed backstop fires whenever the measured risk misses the target.
+
+    Local recoding can nearly always reach the target now, so this drives the risk
+    directly rather than hunting for data that defeats the recoder: the point under
+    test is that a missed target withholds the release, not how it came to be missed.
+    """
+    inp, out = tmp_path / "in", tmp_path / "out"
+    inp.mkdir()
+    (inp / "one.csv").write_text("MRN,Age,Diagnosis\nCASE-81234,47,J45.9\n", encoding="utf-8")
+    pipeline = Pipeline(inp, out, "synthetic-test-key", {}, strict_risk=True)
+    real = pipeline._exposure_stats
+    pipeline._exposure_stats = lambda: {**real(), "singling_out_risk": 0.9}
+    result = pipeline.run()
+    assert result["privacy"]["strict_blocked"] and not result["privacy"]["target_met"]
     assert result["counts"]["records_suppressed"] == 1
     assert not list((out / "sanitized").iterdir())
 

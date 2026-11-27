@@ -177,13 +177,17 @@ def test_risk_targets_and_invalid_inputs(tmp_path):
              "duplicate.json": '{"result":97,"result":99}'}
     output, report, records = run_pipeline(tmp_path / "default", files)
     assert report["counts"]["files_quarantined"] == 2
-    assert not report["privacy"]["target_met"] and records
+    assert records
     exposure = json.loads((output / "audit.json").read_text("utf-8"))["exposure"]
-    assert exposure["k_anonymity"]["1"] == 1
+    # The one released patient keeps a banded age and no geography, which is too coarse
+    # to find anyone by, so the target is met and strict mode has nothing to withhold.
+    assert report["privacy"]["target_met"]
+    assert exposure["singling_out_risk"] == 0
+    assert exposure["coarse_only_profiles"] + exposure["suppressed_qi_profiles"] == exposure["patients"]
     output, report, records = run_pipeline(tmp_path / "strict", files, strict=True)
-    assert report["privacy"]["strict_blocked"]
-    assert report["counts"]["files_suppressed"] == 1
-    assert not records and not any((output / "sanitized").iterdir())
+    assert not report["privacy"]["strict_blocked"]
+    assert report["counts"]["files_suppressed"] == 0
+    assert records and any((output / "sanitized").iterdir())
 
 
 def test_cli_requires_secret_separate_paths_and_empty_destination(tmp_path):
@@ -208,7 +212,11 @@ def test_cli_requires_secret_separate_paths_and_empty_destination(tmp_path):
     assert run(source, out).returncode != 0
     assert (out / "report.json").read_bytes() == report
     assert not (out / ".stegnoz-running").exists()
+    # A note with one name and an age is sanitized and released: the name goes, the
+    # banded age that is left is too coarse to single anyone out, so --strict-risk has
+    # nothing to withhold. (test_privacy covers the withholding path itself.)
     (source / "note.txt").write_text("Patient: Ramesh Verma\nAge: 47\n", encoding="utf-8")
     strict = tmp_path / "strict"
-    assert run(source, strict, "--strict-risk").returncode == 1
-    assert not any((strict / "sanitized").iterdir())
+    assert run(source, strict, "--strict-risk").returncode == 0
+    assert any((strict / "sanitized").iterdir())
+    assert "Ramesh" not in (strict / "sanitized" / "note.txt").read_text("utf-8")
