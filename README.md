@@ -412,14 +412,6 @@ Expand FHIR serialization to support full bidirectional OMOP Common Data Model (
 
 ---
 
-## Team & Authors
-
-**Developed by Team Devduos for Yugaantar 2026**  
-*Built for Secret Wards — Yugaantar DevForge Track 3*  
-*Repository: [https://github.com/itsmeshruti1/StegnoZ.git](https://github.com/itsmeshruti1/StegnoZ.git)*
-
----
-
 ## License
 
 This project is licensed under the terms of the MIT License. See [LICENSE](LICENSE) for details.
