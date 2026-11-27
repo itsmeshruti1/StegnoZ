@@ -2,26 +2,30 @@
 
 **Developed for Yugaantar DevForge Track 3 (Secret Wards)**
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg)](https://www.python.org/)
-[![Pre-Submit: READY TO SUBMIT](https://img.shields.io/badge/Submission-READY_TO_SUBMIT-brightgreen.svg)](#empirical-benchmark--validation-results)
-[![Output Contract: Verified](https://img.shields.io/badge/Contract-CONTRACT_OK-brightgreen.svg)](#empirical-benchmark--validation-results)
-[![Tests: 104 Passed](https://img.shields.io/badge/tests-104_passed_(100%25)-brightgreen.svg)](#testing--verification-suite)
-[![Architecture: Pure Offline CPU](https://img.shields.io/badge/Architecture-Pure_Offline_CPU-orange.svg)](#system-architecture)
-[![Zero LLM](https://img.shields.io/badge/Model-Zero_LLM-red.svg)](#models-declaration)
-[![PII Leaked: 0.0%](https://img.shields.io/badge/PII_Leaked-0.0%25_(0_of_3230)-brightgreen.svg)](#empirical-benchmark--validation-results)
-[![Medical Utility: 100%](https://img.shields.io/badge/Medical_Kept-100.0%25_(4855_of_4855)-brightgreen.svg)](#empirical-benchmark--validation-results)
-[![Privacy Risk: 0.00%](https://img.shields.io/badge/Privacy_Risk-0.00%25_(k_min_5)-brightgreen.svg)](#scientific--mathematical-foundations)
-[![Staging: AES-256-GCM](https://img.shields.io/badge/Staging-AES_256_GCM-blueviolet.svg)](#security-boundaries--operating-limits)
-[![3D Research Studio](https://img.shields.io/badge/Studio-Three.js_%2B_GSAP-black.svg)](#dual-operational-modes)
+<div align="center">
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/Cryptography-AES_GCM-00599C" alt="Cryptography">
-  <img src="https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white" alt="pytest">
-  <img src="https://img.shields.io/badge/Three.js-000000?logo=threedotjs&logoColor=white" alt="Three.js">
-  <img src="https://img.shields.io/badge/GSAP-88CE02?logo=greensock&logoColor=white" alt="GSAP">
-  <img src="https://img.shields.io/badge/FHIR-R4-FF6F00" alt="FHIR R4">
-</p>
+<a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg" alt="Python 3.11+"></a>
+<a href="#empirical-benchmark--validation-results"><img src="https://img.shields.io/badge/Submission-READY_TO_SUBMIT-brightgreen.svg" alt="Submission: READY TO SUBMIT"></a>
+<a href="#empirical-benchmark--validation-results"><img src="https://img.shields.io/badge/Contract-CONTRACT_OK-brightgreen.svg" alt="Output Contract: Verified"></a>
+<a href="#testing--verification-suite"><img src="https://img.shields.io/badge/tests-104_passed_(100%25)-brightgreen.svg" alt="Tests: 104 Passed"></a>
+<a href="#system-architecture"><img src="https://img.shields.io/badge/Architecture-Pure_Offline_CPU-orange.svg" alt="Architecture: Pure Offline CPU"></a>
+<a href="#models-declaration"><img src="https://img.shields.io/badge/Model-Zero_LLM-red.svg" alt="Zero LLM"></a>
+<a href="#empirical-benchmark--validation-results"><img src="https://img.shields.io/badge/PII_Leaked-0.0%25_(0_of_3230)-brightgreen.svg" alt="PII Leaked: 0.0%"></a>
+<a href="#empirical-benchmark--validation-results"><img src="https://img.shields.io/badge/Medical_Kept-100.0%25_(4855_of_4855)-brightgreen.svg" alt="Medical Utility: 100%"></a>
+<a href="#scientific--mathematical-foundations"><img src="https://img.shields.io/badge/Privacy_Risk-0.00%25_(k_min_5)-brightgreen.svg" alt="Privacy Risk: 0.00%"></a>
+<a href="#security-boundaries--operating-limits"><img src="https://img.shields.io/badge/Staging-AES_256_GCM-blueviolet.svg" alt="Staging: AES-256-GCM"></a>
+<a href="#dual-operational-modes"><img src="https://img.shields.io/badge/Studio-Three.js_%2B_GSAP-black.svg" alt="3D Research Studio"></a>
+
+<br/><br/>
+
+<img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python">
+<img src="https://img.shields.io/badge/Cryptography-AES_GCM-00599C" alt="Cryptography">
+<img src="https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white" alt="pytest">
+<img src="https://img.shields.io/badge/Three.js-000000?logo=threedotjs&logoColor=white" alt="Three.js">
+<img src="https://img.shields.io/badge/GSAP-88CE02?logo=greensock&logoColor=white" alt="GSAP">
+<img src="https://img.shields.io/badge/FHIR-R4-FF6F00" alt="FHIR R4">
+
+</div>
 
 **StegnoZ** is a zero-network, pure CPU-only privacy firewall and longitudinal health record sanitization engine built for the **Secret Wards** challenge (Yugaantar DevForge Track 3). It ingests heterogeneous, multi-format clinical exports—spanning Latin, Devanagari, and Hinglish in CSV, TSV, JSON, unstructured clinical notes, and FHIR R4 bundles—and transforms them into formally anonymized, research-ready datasets with zero PI leaks, exact clinical interval preservation, and mathematical $k$-anonymity guarantees.
 
