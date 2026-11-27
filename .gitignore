@@ -17,3 +17,4 @@ check_submission.py
 .playwright-cli/
 _eval/
 _verify/
+*.pdf
