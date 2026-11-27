@@ -52,49 +52,99 @@ StegnoZ bridges the critical gap between **adversarial de-identification** and *
 ## System Architecture
 
 ```mermaid
-flowchart TD
-    subgraph S0 ["Stage 0: Format Ingestion & Security Quarantine"]
-        RAW["Heterogeneous Input Folder (CSV, TSV, JSON, FHIR R4, Notes)"] --> SNIFF["Encoding & MIME Sniffer (utf-8, cp1252, utf-16)"]
-        SNIFF --> SIZE{"File Size & Grammar Check"}
-        SIZE -->|Malformed / Oversized / Binary| QUAR["Encrypted Quarantine (quarantine.jsonl)"]
-        SIZE -->|Valid Document| DOCS["Standardized Internal Documents (Doc / Unit Graph)"]
+flowchart LR
+    subgraph S0 ["Stage 0: Ingestion"]
+        direction TB
+        RAW["Heterogeneous Input<br/>(CSV, TSV, JSON, FHIR, Notes)"] --> SNIFF["MIME & Encoding Sniffer<br/>(UTF-8, CP1252, UTF-16)"]
+        SNIFF --> QUAR["Quarantine Malformed<br/>(quarantine.jsonl)"]
+        SNIFF --> DOCS["Internal Document Graph"]
     end
 
-    subgraph S1 ["Stage 1: Multilingual Extraction & Contextual Entity Disambiguation"]
-        DOCS --> SCHEMA["Header Classification & Date-Order Inference"]
-        DOCS --> TRANSLIT["Devanagari-Latin Phonetic Folding (Rule-Based Engine)"]
-        SCHEMA & TRANSLIT --> CONTEXT{"Contextual Trap Disambiguation"}
-        CONTEXT -->|Eponyms / Attending Doctors| CLIN_KEEP["Preserve Clinical Surface & Provider Name"]
-        CONTEXT -->|Chief Complaints (C/O fever)| COMP_KEEP["Preserve Clinical Symptom Note"]
-        CONTEXT -->|Patients / Relatives / Phones / Aadhaar| PII_EXTRACT["Extract Direct & Indirect Identifiers"]
+    subgraph S1 ["Stage 1: Extraction"]
+        direction TB
+        DOCS --> TRAP{"Context Disambiguation"}
+        TRAP -->|Eponyms & Clinicians| CLIN["Preserve Medical Names"]
+        TRAP -->|Patients & Relatives| PII["Extract PII Entities"]
+        TRAP -->|Chief Complaints| COMP["Preserve Symptom Notes"]
     end
 
-    subgraph S2 ["Stage 2: Cross-Script Fellegi-Sunter Longitudinal Patient Linkage"]
-        PII_EXTRACT --> BLOCKS["Multi-Key Blocking (Phonetic Keys, UHID, Contact Tokens)"]
-        BLOCKS --> FS["Fellegi-Sunter EM Weight Estimation (Log2 Likelihood Ratios)"]
-        FS --> CONFLICT{"Conflict & Corroboration Guard"}
-        CONFLICT -->|Conflicting Demographics| SEPARATE["Keep Profiles Disjoint"]
-        CONFLICT -->|Corroborated Match| MERGE["Unified Patient Profile (PsN Cluster)"]
-        MERGE --> CRYPTO["Keyed Cryptographic Pseudonym & Invariant Date Shift"]
+    subgraph S2 ["Stage 2: Linkage"]
+        direction TB
+        PII --> BLOCK["Multi-Key Phonetic Blocking"]
+        BLOCK --> FS["Fellegi-Sunter EM Weights<br/>(log2 likelihood agreement)"]
+        FS --> CONFLICT{"Conflict Guard"}
+        CONFLICT -->|Demographic Conflict| SEP["Keep Records Disjoint"]
+        CONFLICT -->|Corroborated Match| MERGE["Unified Patient Profile"]
     end
 
-    subgraph S3 ["Stage 3: Reverse Privacy Engine & Lattice Search"]
-        CRYPTO --> LATTICE["Generalization Lattice Search (Age 5/10/20 x Loc Tehsil/District x PIN Prefix/Drop)"]
-        LATTICE --> STAGE["Authenticated AES-256-GCM Staging (.verified-*)"]
-        STAGE --> EVAL["Empirical Release Evaluator (_exposure_stats)"]
-        EVAL --> RECODE{"Mondrian Local Recoding"}
-        RECODE -->|Exposed Outliers / Rare Dx| ESCALATE["Local Ladder Escalation (Preserve District)"]
-        RECODE -->|Target Met (k >= 5, Risk <= 5%)| BEST["Optimal Privacy-Utility Frontier Node"]
+    subgraph S3 ["Stage 3: Privacy Engine"]
+        direction TB
+        MERGE --> LATTICE["Poset Lattice Search<br/>(Age x Location x PIN)"]
+        LATTICE --> SPOOL["AES-256-GCM Staging"]
+        SPOOL --> RECODE{"Mondrian Local Recoding"}
+        RECODE -->|Exposed Outliers| ESC["Escalate Outlier Cells"]
+        RECODE -->|k at least 5| OPT["Optimal Frontier Node"]
     end
 
-    subgraph S4 ["Stage 4: Authenticated Release & Offline Research Studio"]
-        BEST --> EXPORT["Export Sanitized Release (sanitized/, records.jsonl, audit.json)"]
-        EXPORT --> CLI_OUT["Verified Output Bundle (Exit Code 0)"]
-        EXPORT --> STUDIO["Offline WebGL Research Studio (dashboard.research_server)"]
-        STUDIO --> THREE["Three.js Data Sphere + GSAP Animations"]
-        STUDIO --> COHORTS["Interactive Aggregate Cohort Analytics (<5 Profile Suppression)"]
+    subgraph S4 ["Stage 4: Verified Release"]
+        direction TB
+        OPT --> EXPORT["Export Sanitized Release<br/>(sanitized/, records.jsonl)"]
+        EXPORT --> CLI["CLI Verification<br/>(Exit Code 0)"]
+        EXPORT --> STUDIO["Offline 3D Studio<br/>(dashboard.research_server)"]
     end
+
+    S0 --> S1 --> S2 --> S3 --> S4
 ```
+
+### High-Level End-to-End Pipeline
+
+```
+┌────────────────────────┐      ┌────────────────────────┐      ┌────────────────────────┐
+│  00: INGESTION         │      │  01: EXTRACTION        │      │  02: PATIENT LINKAGE   │
+│  MIME & Encoding Sniff │ ───> │  Devanagari Phonetics  │ ───> │  Fellegi-Sunter EM     │
+│  Streaming Quarantine  │      │  Context Trap Guards   │      │  Conflict Invariants   │
+└────────────────────────┘      └────────────────────────┘      └────────────────────────┘
+                                                                             │
+                                                                             v
+┌────────────────────────┐      ┌────────────────────────┐      ┌────────────────────────┐
+│  04: AUTHENTICATED     │      │  03B: MONDRIAN RECODE  │      │  03A: PRIVACY ENGINE   │
+│      RELEASE & STUDIO  │ <─── │  Local Cell Escalation │ <─── │  Poset Lattice Search  │
+│  sanitized/, audit.json│      │  District Preservation │      │  AES-256-GCM Staging   │
+└────────────────────────┘      └────────────────────────┘      └────────────────────────┘
+```
+
+### Architectural Deep Dive: 5 Core Pipeline Stages
+
+#### Stage 0: Format Ingestion & Security Quarantine (`stegnoz/ingest.py`)
+* **Multi-Format Parsing:** Ingests CSV, TSV, JSON, unstructured physician consultation notes, and FHIR R4 bundles (`Bundle`, `Patient`, `Condition`, `Encounter`, `Observation`, `DiagnosticReport`).
+* **Encoding Auto-Detection:** Sniffs and normalizes `utf-8`, `utf-16`, and `windows-1252` (CP1252) file encodings with byte-order mark (BOM) handling.
+* **Proactive Security Quarantine:** Inspects input size thresholds before memory loading. Corrupted files, un-scrubbable binary formats (e.g. invalid attachments), and oversized files are quarantined into `quarantine.jsonl` with streaming SHA-256 hashes, protecting pipeline execution.
+
+#### Stage 1: Multilingual Extraction & Contextual Entity Disambiguation (`stegnoz/extract.py`, `sanitize.py`)
+* **Cross-Script Transliteration:** Rule-based Devanagari romanization with inherent-schwa deletion equates multi-script names (`रीना` / `Reena`), honorifics (*-ji*, *-sahab*), and kinship relationships (*S/o*, *D/o*, *W/o*, *पुत्र*, *आत्मज*).
+* **Checksum-Aware Identifier Validation:** Validates Verhoeff checksums on 12-digit Aadhaar, 14-digit ABHA numbers, 10-digit PAN, and mobile numbers across Latin, Devanagari, and international (+91) dial codes.
+* **Contextual Entity Guards:** Resolves clinical ambiguity deterministically:
+  * *Eponym Whitelist:* Prevents scrubbing conditions named after people (`Parkinson's disease`, `Hashimoto thyroiditis`).
+  * *Attending Clinicians:* Differentiates treating physicians (`Dr. Alok Nath`) from patients to preserve clinical hierarchy.
+  * *Chief Complaints:* Disambiguates symptoms (`C/O fever`) from kinship links (`C/O Suresh Yadav`).
+  * *Pharmaceutical Safeguards:* Protects medication regimens (`Ramipril 5 mg OD`) from numeric phone filters.
+
+#### Stage 2: Cross-Script Fellegi-Sunter Longitudinal Patient Linkage (`stegnoz/link.py`)
+* **Multi-Attribute Blocking:** Reduces the $O(N^2)$ candidate comparison space by indexing candidates on phonetic name keys, scoped hospital MRNs, and tokenized national IDs.
+* **Expectation-Maximization (EM) Weighting:** Calculates log-likelihood agreement weights $w_i = \log_2(m_i / u_i)$ based on conditional match probabilities. Records merge if the cumulative agreement score exceeds corroboration threshold $\tau \ge 6.0$.
+* **Cannot-Link Conflict Invariants:** Enforces strict biological and demographic invariants; records with irreconcilable dates of birth, mismatched adult genders, or conflicting national IDs are permanently blocked from merging.
+
+#### Stage 3: Reverse Privacy Engine & Lattice Search (`stegnoz/privacy.py`)
+* **Poset Generalization Lattice:** Explores a discrete partially ordered set:
+  $$\text{Age Band } (5, 10, 20\text{ years}) \times \text{Location } (\text{Tehsil} \to \text{District}) \times \text{PIN } (\text{Prefix} \to \text{Drop})$$
+* **Encrypted Candidate Staging:** rewrites releases into temporary AES-256-GCM encrypted spool directories (`.verified-*`) and measures true empirical singling-out risk against an electoral-roll attacker registry ($4\text{--}5\times$ population factor).
+* **Mondrian Local Recoding:** Escalates only the specific outlier cells failing $k \ge 5$ anonymity. Strict `preserve_district: 1` limits geographic coarsening to maintain clinical epidemiological utility.
+* **Keyed Invariant Date Shifting:** Applies a secret, patient-specific additive delta $\Delta \in [21, 180]\text{ days}$, keeping hospital stays and intervals byte-accurate while rendering date-matching attacks futile.
+
+#### Stage 4: Authenticated Release & Offline Research Studio (`stegnoz/pipeline.py`, `dashboard/`)
+* **Deterministic Verification & Export:** Conducts exhaustive residual leak scans across content, filenames, headers, and metadata. Upon passing, releases clean UTF-8 `sanitized/` files, `records.jsonl`, `report.json`, and `audit.json`.
+* **Fail-Closed Default:** If an input cannot meet the configured privacy target, StegnoZ automatically withholds sanitized candidate files, logging an auditable reason code (`risk_target_exceeded`).
+* **Offline 3D Research Studio:** Run `python -m dashboard.research_server --release <dir>` to explore releases via an interactive Three.js data sphere and GSAP console with strict $<5$ profile disclosure controls.
 
 ---
 
