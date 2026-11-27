@@ -16,8 +16,6 @@
 <a href="#security-boundaries--operating-limits"><img src="https://img.shields.io/badge/Staging-AES_256_GCM-blueviolet.svg" alt="Staging: AES-256-GCM"></a>
 <a href="#dual-operational-modes"><img src="https://img.shields.io/badge/Studio-Three.js_%2B_GSAP-black.svg" alt="3D Research Studio"></a>
 
-<br/><br/>
-
 <img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python">
 <img src="https://img.shields.io/badge/Cryptography-AES_GCM-00599C" alt="Cryptography">
 <img src="https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white" alt="pytest">
@@ -53,47 +51,57 @@ StegnoZ bridges the critical gap between **adversarial de-identification** and *
 
 ```mermaid
 flowchart LR
-    subgraph S0 ["Stage 0: Ingestion"]
-        direction TB
-        RAW["Heterogeneous Input<br/>(CSV, TSV, JSON, FHIR, Notes)"] --> SNIFF["MIME & Encoding Sniffer<br/>(UTF-8, CP1252, UTF-16)"]
-        SNIFF --> QUAR["Quarantine Malformed<br/>(quarantine.jsonl)"]
-        SNIFF --> DOCS["Internal Document Graph"]
+    A[Raw Hospital Files<br/>Latin / Devanagari / Hinglish] --> B[01 · Ingestion]
+
+    subgraph B[01 · Ingestion]
+        B1[MIME & encoding sniffing]
+        B2[Streaming SHA-256 hashing]
+        B3[Quarantine unsupported files]
     end
 
-    subgraph S1 ["Stage 1: Extraction"]
-        direction TB
-        DOCS --> TRAP{"Context Disambiguation"}
-        TRAP -->|Eponyms & Clinicians| CLIN["Preserve Medical Names"]
-        TRAP -->|Patients & Relatives| PII["Extract PII Entities"]
-        TRAP -->|Chief Complaints| COMP["Preserve Symptom Notes"]
+    B --> C[02 · Extraction]
+
+    subgraph C[02 · Extraction]
+        C1[Devanagari phonetic normalization]
+        C2[Checksum validation]
+        C3[Context-aware entity extraction]
+        C4[Medical eponym & dosage guards]
     end
 
-    subgraph S2 ["Stage 2: Linkage"]
-        direction TB
-        PII --> BLOCK["Multi-Key Phonetic Blocking"]
-        BLOCK --> FS["Fellegi-Sunter EM Weights<br/>(log2 likelihood agreement)"]
-        FS --> CONFLICT{"Conflict Guard"}
-        CONFLICT -->|Demographic Conflict| SEP["Keep Records Disjoint"]
-        CONFLICT -->|Corroborated Match| MERGE["Unified Patient Profile"]
+    C --> D[03 · Linkage]
+
+    subgraph D[03 · Linkage]
+        D1[EM probabilistic matching]
+        D2[Log-likelihood agreement weights]
+        D3[Corroboration threshold τ ≥ 6.0]
+        D4[Conflict invariants<br/>IDs / demographic dates]
     end
 
-    subgraph S3 ["Stage 3: Privacy Engine"]
-        direction TB
-        MERGE --> LATTICE["Poset Lattice Search<br/>(Age x Location x PIN)"]
-        LATTICE --> SPOOL["AES-256-GCM Staging"]
-        SPOOL --> RECODE{"Mondrian Local Recoding"}
-        RECODE -->|Exposed Outliers| ESC["Escalate Outlier Cells"]
-        RECODE -->|k at least 5| OPT["Optimal Frontier Node"]
+    D --> E[04 · Privacy Engine]
+
+    subgraph E[04 · Privacy Engine]
+        E1[Generalization lattice search<br/>Age · Location · PIN]
+        E2[Mondrian local recoding]
+        E3[k-anonymity enforcement<br/>k ≥ 5]
+        E4[HMAC-SHA256 pseudonymization]
+        E5[Patient-specific timestamp shift<br/>21–180 days]
     end
 
-    subgraph S4 ["Stage 4: Verified Release"]
-        direction TB
-        OPT --> EXPORT["Export Sanitized Release<br/>(sanitized/, records.jsonl)"]
-        EXPORT --> CLI["CLI Verification<br/>(Exit Code 0)"]
-        EXPORT --> STUDIO["Offline 3D Studio<br/>(dashboard.research_server)"]
+    E --> F[05 · Verified Export]
+
+    subgraph F[05 · Verified Export]
+        F1[AES-256-GCM encrypted staging]
+        F2[Sanitized files]
+        F3[records.jsonl]
+        F4[report.json]
+        F5[audit.json]
     end
 
-    S0 --> S1 --> S2 --> S3 --> S4
+    F --> G[Safe Release<br/>or Fail-Closed Withholding]
+
+    B3 -.-> G
+    D4 -.->|Conflict detected| G
+    E3 -.->|Risk threshold not met| G
 ```
 
 ### High-Level End-to-End Pipeline
