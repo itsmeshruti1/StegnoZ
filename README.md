@@ -49,9 +49,9 @@ See [VERIFICATION.md](VERIFICATION.md) for measured results, remaining limits, a
 
 ## Research explorer
 
-Run `python dashboard/research_server.py` and open http://127.0.0.1:8765 for the landing page. It explains the processing pipeline and links to http://127.0.0.1:8765/dashboard with the labeled synthetic demo. The landing page preserves the supplied design's capsule animation, query entry, serif display type, and four-stage cards. Questions entered there carry into the dashboard. Python's standard library serves the app and aggregate API. Fonts, Three.js, GSAP, and compiled CSS are bundled locally so the interface works offline.
+The landing page and aggregate dashboard are integrated as a separate, local-only interface; the organizer entry point in `raksha.toml` remains unchanged. Run `python -m dashboard.research_server` and open http://127.0.0.1:8765 for the landing page. It explains the processing pipeline and links to http://127.0.0.1:8765/dashboard with the labeled synthetic demo. The landing page preserves the supplied design's capsule animation, query entry, serif display type, and four-stage cards. Questions entered there carry into the dashboard. Python's standard library serves the app and aggregate API. Fonts, Three.js, GSAP, and compiled CSS are bundled locally so the interface works offline.
 
-Connect pipeline output with `python dashboard/research_server.py --release <output_dir>`. The adapter reads approved sanitized files through `report.json` and `records.jsonl`, refuses strict-blocked releases, and keeps patient-level data on the server. The server binds to loopback only.
+Connect pipeline output with `python -m dashboard.research_server --release <output_dir>`. The adapter reads approved sanitized files through `report.json` and `records.jsonl`, refuses strict-blocked releases, and keeps patient-level data on the server. The server binds to loopback only and does not expose sanitized files as static downloads.
 
 Researchers can filter condition, broad age band, sex, and source file, use a limited rule-based question syntax, inspect distinct-profile breakdowns, save cohorts in browser storage, and download aggregate CSVs. Supported examples include “Show women with diabetes” and “Show age distribution”. Unsupported questions return an error. Applied filters are visible and shareable through the URL.
 

@@ -1,0 +1,36 @@
+html { scroll-behavior: smooth; }
+body { background: #0f0f11; }
+[hidden] { display: none !important; }
+.editorial-title { font-family: Fraunces, Georgia, serif; }
+.console-nav.active { background: #202023; color: #fff; border-left: 2px solid #fff; }
+.chart-row { grid-template-columns: minmax(5rem, 7rem) 1fr 2.5rem; }
+.facet-pill strong { max-width: 10rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metric-card { min-height: 11rem; }
+button:disabled { opacity: .5; cursor: wait; }
+button, input, select, a { touch-action: manipulation; }
+button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+::selection { color: #09090b; background: #f4f4f5; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { border-radius: 6px; background: #52525b; border: 2px solid #0f0f11; }
+::-webkit-scrollbar-track { background: #0f0f11; }
+@media (max-width: 1023px) {
+  .console-sidebar { position: static; width: 100%; height: auto; padding: 1rem; border-right: 0; border-bottom: 1px solid #27272a; }
+  .console-sidebar > a { margin-bottom: .75rem; padding: 0; }
+  .console-sidebar > div:nth-child(2), .console-sidebar > div:last-child { display: none; }
+  .console-sidebar nav { display: flex; overflow-x: auto; padding: 0; gap: .25rem; }
+  .console-sidebar nav a { flex: 0 0 auto; white-space: nowrap; }
+  .console-content { padding-left: 0; }
+  .console-topbar { position: static; height: auto; min-height: 3.5rem; padding: .75rem 1.25rem; }
+  main#main { padding-top: 0; }
+}
+@media (max-width: 640px) {
+  .console-topbar { display: none; }
+  .console-page > div, .console-page > section { padding-left: 1rem; padding-right: 1rem; }
+  #saved, #methods { padding: 1.25rem; }
+  .query-row { flex-direction: column; }
+  .query-row button { min-height: 2.75rem; }
+  .chart-row { grid-template-columns: minmax(4.5rem, 5.5rem) 1fr 2.25rem; }
+  .age-chart { overflow-x: auto; }
+  .age-column { min-width: 2.6rem; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

@@ -1,0 +1,697 @@
+<!doctype html>
+<html class="dark" lang="en">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>StegnoZ — Privacy pipeline and research</title>
+
+<style>@layer base{html,body{margin:0;padding:0;background-color:#050608;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}
+.editorial-title {
+  font-family: 'Fraunces', 'Playfair Display', Georgia, serif;
+  text-shadow: 0 4px 26px rgba(5, 6, 8, 0.96), 0 12px 48px rgba(5, 6, 8, 0.92);
+}
+.hero-text-scrim {
+  background: radial-gradient(
+    ellipse 68% 58% at 50% 48%,
+    rgba(5, 6, 8, 0.78) 0%,
+    rgba(5, 6, 8, 0.45) 56%,
+    rgba(5, 6, 8, 0) 100%
+  );
+}
+</style>
+<style>@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }</style>
+<style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style>
+
+<style>
+  /* ---- view switching -------------------------------------------------
+     Only one view is in the layout at a time. This matters: both designs
+     use position:fixed chrome, which ignores document flow, so showing
+     them together would overlap. display:none also takes the hidden
+     view's fixed children out of the picture entirely. */
+  #view-dashboard { display: none; }
+  body[data-view="dashboard"] #view-landing { display: none; }
+  body[data-view="dashboard"] #view-dashboard { display: block; }
+
+  /* Page backdrop follows the active view. Unlayered, so it beats the
+     @layer base rules the two pages brought with them. */
+  body { background-color: #050608; }
+  body[data-view="dashboard"] { background-color: #0f0f11; }
+</style>
+<link rel="stylesheet" href="/reference-fonts.css"><link rel="stylesheet" href="/reference.css"><script src="/three.min.js"></script><script src="/gsap.min.js"></script><script src="/ScrollTrigger.min.js"></script><script defer src="/reference-landing.js"></script><link rel="icon" href="/stegnoz-mark.svg" type="image/svg+xml"><style>@media (max-width: 640px) { .hero-text-scrim { background: rgba(5,6,8,.62); } }</style></head>
+<body>
+<div id="view-landing" class="bg-[#050608] font-geist text-[#ced4da] antialiased selection:bg-[#f8f9fa] selection:text-[#212529] relative min-h-screen">
+
+<!-- THREEJS BROKEN CAPSULE & DRIFTING PARTICLES BACKGROUND -->
+<!-- STITCH_THREEJS_START:ANIMATION_17 class="fixed inset-0 w-full h-full pointer-events-none z-0" -->
+<div class="fixed inset-0 w-full h-full pointer-events-none z-0" style="display:block;">
+<div id="threejs-container-ANIMATION_17" style="width:100%;height:100%;transition:opacity .45s ease"></div>
+<script>
+(function () {
+  const container = document.getElementById('threejs-container-ANIMATION_17');
+  if (!container || typeof THREE === 'undefined') return;
+
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ----------------------------------------------------------------
+     RENDERER / SCENE / CAMERA
+  -----------------------------------------------------------------*/
+  let W = window.innerWidth, H = window.innerHeight;
+
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x050608, 0.032);
+
+  const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+  camera.position.set(0, 0.05, 11.4);
+
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.24;
+  renderer.domElement.style.display = 'block';
+  container.appendChild(renderer.domElement);
+
+  /* ----------------------------------------------------------------
+     STUDIO SOFTBOX ENVIRONMENT REFLECTION MAP
+  -----------------------------------------------------------------*/
+  function createStudioEnvTexture() {
+    const envCanvas = document.createElement('canvas');
+    envCanvas.width = 512;
+    envCanvas.height = 256;
+    const ctx = envCanvas.getContext('2d');
+
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, 256);
+    bgGrad.addColorStop(0, '#181a1f');
+    bgGrad.addColorStop(0.5, '#07080b');
+    bgGrad.addColorStop(1, '#14161a');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 512, 256);
+
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
+    ctx.beginPath();
+    ctx.ellipse(140, 54, 95, 22, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(222, 226, 230, 0.68)';
+    ctx.beginPath();
+    ctx.ellipse(390, 68, 80, 18, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = 'rgba(173, 181, 189, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(260, 210, 150, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const tex = new THREE.CanvasTexture(envCanvas);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    return tex;
+  }
+
+  scene.environment = createStudioEnvTexture();
+
+  /* Three-Point Monochrome Studio Lighting */
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.54);
+  scene.add(ambientLight);
+
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.85);
+  keyLight.position.set(-5.5, 7.5, 8.5);
+  scene.add(keyLight);
+
+  const fillLight = new THREE.DirectionalLight(0xd8dde6, 1.15);
+  fillLight.position.set(7.0, 4.5, 6.0);
+  scene.add(fillLight);
+
+  const rimLight = new THREE.DirectionalLight(0xffffff, 1.65);
+  rimLight.position.set(0.5, -6.5, -5.0);
+  scene.add(rimLight);
+
+  const centerCoreGlow = new THREE.PointLight(0xffffff, 1.5, 11);
+  centerCoreGlow.position.set(0, 0.1, 2.2);
+  scene.add(centerCoreGlow);
+
+  /* Master Group */
+  const masterGroup = new THREE.Group();
+  masterGroup.position.set(0, 0.08, 0);
+  scene.add(masterGroup);
+
+  /* ----------------------------------------------------------------
+     1. THICK-WALLED HOLLOW BROKEN CAPSULE SHELL BUILDER
+  -----------------------------------------------------------------*/
+  function buildThickHollowCapsuleHalf(opts) {
+    const outerRadius = opts.outerRadius || 1.62;
+    const wallThickness = opts.wallThickness || 0.19;
+    const cylLength = opts.cylLength || 1.85;
+    const jaggedAmp = opts.jaggedAmp || 0.24;
+    const seedOffset = opts.seedOffset || 0;
+
+    const innerRadius = outerRadius - wallThickness;
+    const profilePoints = [];
+    const domeSteps = 22;
+    const wallSteps = 14;
+
+    for (let i = 0; i <= domeSteps; i++) {
+      const t = i / domeSteps;
+      const phi = t * (Math.PI * 0.5);
+      profilePoints.push(new THREE.Vector2(Math.sin(phi) * innerRadius, cylLength + Math.cos(phi) * innerRadius));
+    }
+    for (let i = 1; i <= wallSteps; i++) {
+      const t = i / wallSteps;
+      profilePoints.push(new THREE.Vector2(innerRadius, cylLength * (1 - t)));
+    }
+    profilePoints.push(new THREE.Vector2(innerRadius + wallThickness * 0.25, -0.025));
+    profilePoints.push(new THREE.Vector2(innerRadius + wallThickness * 0.75, -0.025));
+    profilePoints.push(new THREE.Vector2(outerRadius, 0));
+
+    for (let i = 1; i <= wallSteps; i++) {
+      const t = i / wallSteps;
+      profilePoints.push(new THREE.Vector2(outerRadius, cylLength * t));
+    }
+    for (let i = 1; i <= domeSteps; i++) {
+      const t = i / domeSteps;
+      const phi = (Math.PI * 0.5) * (1 - t);
+      profilePoints.push(new THREE.Vector2(Math.sin(phi) * outerRadius, cylLength + Math.cos(phi) * outerRadius));
+    }
+
+    const geometry = new THREE.LatheGeometry(profilePoints, 84);
+    const posAttr = geometry.attributes.position;
+    for (let i = 0; i < posAttr.count; i++) {
+      const x = posAttr.getX(i);
+      const y = posAttr.getY(i);
+      const z = posAttr.getZ(i);
+      if (y < 0.65) {
+        const angle = Math.atan2(z, x);
+        const crack =
+          Math.sin(angle * 3.0 + seedOffset) * 0.52 +
+          Math.cos(angle * 6.0 - seedOffset * 1.4) * 0.32 +
+          Math.sin(angle * 11.0 + seedOffset * 2.1) * 0.16;
+        const proximity = Math.max(0, 1 - Math.max(0, y) / 0.65);
+        posAttr.setY(i, y + crack * jaggedAmp * (proximity * proximity));
+      }
+    }
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  /* Left Half: Satin-Matte Dark Obsidian Shell */
+  const leftObsidianMat = new THREE.MeshPhysicalMaterial({
+    color: 0x1c1e22,
+    emissive: 0x050608,
+    roughness: 0.28,
+    metalness: 0.25,
+    clearcoat: 0.85,
+    clearcoatRoughness: 0.22,
+    envMapIntensity: 1.35
+  });
+
+  /* Right Half: Frosted Translucent Smoke-White / Silver Glass Shell */
+  const rightFrostedWhiteMat = new THREE.MeshPhysicalMaterial({
+    color: 0xe9ecef,
+    emissive: 0x16181c,
+    roughness: 0.24,
+    metalness: 0.08,
+    transparent: true,
+    opacity: 0.56,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.12,
+    envMapIntensity: 1.65,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const frostedCrackLinesMat = new THREE.MeshBasicMaterial({
+    color: 0xf8f9fa,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.07
+  });
+
+  const leftGeo = buildThickHollowCapsuleHalf({ outerRadius: 1.64, wallThickness: 0.20, cylLength: 1.88, jaggedAmp: 0.28, seedOffset: 0.4 });
+  const rightGeo = buildThickHollowCapsuleHalf({ outerRadius: 1.64, wallThickness: 0.19, cylLength: 1.88, jaggedAmp: 0.30, seedOffset: 2.3 });
+
+  const innerPelletMat = new THREE.MeshPhysicalMaterial({
+    color: 0xdee2e6,
+    roughness: 0.14,
+    metalness: 0.15,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.08,
+    envMapIntensity: 1.6
+  });
+
+  const leftHalfGroup = new THREE.Group();
+  leftHalfGroup.add(new THREE.Mesh(leftGeo, leftObsidianMat));
+  [
+    { pos: [-0.25, 0.55, 0.25], r: 0.56 },
+    { pos: [0.38, 0.95, -0.18], r: 0.48 },
+    { pos: [-0.15, 1.35, -0.22], r: 0.52 },
+    { pos: [0.22, 0.22, 0.35], r: 0.36 },
+    { pos: [-0.48, 0.85, -0.32], r: 0.34 }
+  ].forEach(function (p) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(p.r, 24, 24), innerPelletMat);
+    m.position.set(p.pos[0], p.pos[1], p.pos[2]);
+    leftHalfGroup.add(m);
+  });
+
+  const rightHalfGroup = new THREE.Group();
+  rightHalfGroup.add(new THREE.Mesh(rightGeo, rightFrostedWhiteMat));
+  rightHalfGroup.add(new THREE.Mesh(rightGeo, frostedCrackLinesMat));
+  [
+    { pos: [0.18, 0.72, 0.12], r: 0.52 },
+    { pos: [-0.32, 1.15, -0.15], r: 0.46 },
+    { pos: [0.12, 1.48, 0.18], r: 0.44 },
+    { pos: [-0.22, 0.28, 0.28], r: 0.32 }
+  ].forEach(function (p) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(p.r, 24, 24), innerPelletMat);
+    m.position.set(p.pos[0], p.pos[1], p.pos[2]);
+    rightHalfGroup.add(m);
+  });
+
+  const heroPose = {
+    leftPos: new THREE.Vector3(-1.95, 0.22, 0.35),
+    leftRot: new THREE.Euler(0.46, 0.28, 0.68),
+    rightPos: new THREE.Vector3(1.98, 0.18, -0.15),
+    rightRot: new THREE.Euler(0.32, -0.24, -2.38)
+  };
+
+  leftHalfGroup.position.copy(heroPose.leftPos);
+  leftHalfGroup.rotation.copy(heroPose.leftRot);
+  rightHalfGroup.position.copy(heroPose.rightPos);
+  rightHalfGroup.rotation.copy(heroPose.rightRot);
+
+  masterGroup.add(leftHalfGroup);
+  masterGroup.add(rightHalfGroup);
+
+  /* ----------------------------------------------------------------
+     2. FLOATING BROKEN SHELL SHARDS
+  -----------------------------------------------------------------*/
+  const shardGroup = new THREE.Group();
+  masterGroup.add(shardGroup);
+
+  const shardGeo = new THREE.CylinderGeometry(0.42, 0.36, 0.55, 7, 1, true, 0, Math.PI * 0.85);
+  const shards = [
+    { pos: [-0.28, -1.05, 0.85], rot: [0.5, 0.3, -0.8], scale: [0.75, 0.55, 0.55], dark: true },
+    { pos: [0.55, -0.82, 0.65], rot: [-0.4, 0.7, 0.5], scale: [0.48, 0.42, 0.42], dark: false },
+    { pos: [0.12, 0.85, 0.55], rot: [0.8, -0.3, 0.4], scale: [0.38, 0.32, 0.32], dark: false },
+    { pos: [-0.62, -0.45, 0.92], rot: [0.2, 0.9, -0.3], scale: [0.34, 0.28, 0.28], dark: true },
+    { pos: [0.88, 0.42, 0.48], rot: [-0.6, -0.4, 1.1], scale: [0.42, 0.35, 0.35], dark: false }
+  ].map(function (s, idx) {
+    const mesh = new THREE.Mesh(shardGeo, s.dark ? leftObsidianMat : rightFrostedWhiteMat);
+    mesh.position.set(s.pos[0], s.pos[1], s.pos[2]);
+    mesh.rotation.set(s.rot[0], s.rot[1], s.rot[2]);
+    mesh.scale.set(s.scale[0], s.scale[1], s.scale[2]);
+    shardGroup.add(mesh);
+    return { mesh: mesh, basePos: new THREE.Vector3(s.pos[0], s.pos[1], s.pos[2]), phase: idx * 1.3 };
+  });
+
+  /* ----------------------------------------------------------------
+     3. 125 GLOSSY 3D SPHERICAL PELLETS + 4-POINT STAR GLINTS
+  -----------------------------------------------------------------*/
+  const PELLET_COUNT = 125;
+  const pelletSphereGeo = new THREE.SphereGeometry(1, 22, 22);
+  const pelletInstancedMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    roughness: 0.14,
+    metalness: 0.18,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.08,
+    envMapIntensity: 1.75
+  });
+
+  const pelletInstancedMesh = new THREE.InstancedMesh(pelletSphereGeo, pelletInstancedMat, PELLET_COUNT);
+  pelletInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+  const pelletMeta = [];
+  const dummy = new THREE.Object3D();
+  const tmpColor = new THREE.Color();
+  const monochromePelletHex = [0xf8f9fa, 0xdee2e6, 0xadb5bd, 0x6c757d, 0x343a40];
+
+  for (let i = 0; i < PELLET_COUNT; i++) {
+    const isGapCluster = i < 56;
+    let bx, by, bz, radius;
+    if (isGapCluster) {
+      const angle = Math.random() * Math.PI * 2;
+      const spread = 0.25 + Math.pow(Math.random(), 0.8) * 2.55;
+      bx = Math.cos(angle) * spread * 1.15;
+      by = Math.sin(angle) * spread * 0.95 - 0.15;
+      bz = (Math.random() - 0.35) * 2.4;
+      radius = 0.08 + Math.pow(Math.random(), 1.6) * 0.24;
+    } else {
+      bx = (Math.random() - 0.5) * 14.5;
+      by = (Math.random() - 0.5) * 8.2;
+      bz = (Math.random() - 0.5) * 6.5 - 0.8;
+      radius = 0.06 + Math.pow(Math.random(), 1.8) * 0.26;
+    }
+
+    const len = Math.hypot(bx, by, bz) || 1;
+    const driftDir = new THREE.Vector3(bx / len, by / len, bz / len).multiplyScalar(1.4 + Math.random() * 2.8);
+    pelletMeta.push({
+      basePos: new THREE.Vector3(bx, by, bz),
+      driftDir: driftDir,
+      radius: radius,
+      phase: Math.random() * Math.PI * 2,
+      speed: 0.45 + Math.random() * 0.55
+    });
+
+    tmpColor.setHex(monochromePelletHex[i % monochromePelletHex.length]);
+    pelletInstancedMesh.setColorAt(i, tmpColor);
+
+    dummy.position.set(bx, by, bz);
+    dummy.scale.setScalar(radius);
+    dummy.updateMatrix();
+    pelletInstancedMesh.setMatrixAt(i, dummy.matrix);
+  }
+  if (pelletInstancedMesh.instanceColor) pelletInstancedMesh.instanceColor.needsUpdate = true;
+  masterGroup.add(pelletInstancedMesh);
+
+  /* 4-Point Star Glints */
+  function createStarGlintTexture() {
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    const ctx = c.getContext('2d');
+    const rad = ctx.createRadialGradient(32, 32, 0, 32, 32, 28);
+    rad.addColorStop(0, 'rgba(255,255,255,1)');
+    rad.addColorStop(0.22, 'rgba(233,236,239,0.75)');
+    rad.addColorStop(1, 'rgba(5,6,8,0)');
+    ctx.fillStyle = rad;
+    ctx.fillRect(0, 0, 64, 64);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.moveTo(32, 2);
+    ctx.quadraticCurveTo(34, 30, 62, 32);
+    ctx.quadraticCurveTo(34, 34, 32, 62);
+    ctx.quadraticCurveTo(30, 34, 2, 32);
+    ctx.quadraticCurveTo(30, 30, 32, 2);
+    ctx.fill();
+    return new THREE.CanvasTexture(c);
+  }
+
+  const GLINT_COUNT = 85;
+  const glintPositions = new Float32Array(GLINT_COUNT * 3);
+  for (let i = 0; i < GLINT_COUNT; i++) {
+    glintPositions[i * 3] = (Math.random() - 0.5) * 18;
+    glintPositions[i * 3 + 1] = (Math.random() - 0.5) * 10;
+    glintPositions[i * 3 + 2] = (Math.random() - 0.5) * 8 - 1;
+  }
+  const glintGeo = new THREE.BufferGeometry();
+  glintGeo.setAttribute('position', new THREE.BufferAttribute(glintPositions, 3));
+  const glintMat = new THREE.PointsMaterial({
+    size: 0.24,
+    map: createStarGlintTexture(),
+    color: 0xf8f9fa,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const starGlints = new THREE.Points(glintGeo, glintMat);
+  masterGroup.add(starGlints);
+
+  /* ----------------------------------------------------------------
+     4. GSAP SCROLLTRIGGER CHOREOGRAPHY
+  -----------------------------------------------------------------*/
+  const scrollState = {
+    splitProgress: 0,
+    dispersion: 0.08,
+    masterRotY: 0,
+    masterRotX: 0,
+    camZ: 11.4
+  };
+
+  function buildTimeline() {
+    if (typeof gsap === 'undefined' || typeof ScrollTrigger === 'undefined') return;
+    gsap.registerPlugin(ScrollTrigger);
+
+    gsap.to(scrollState, {
+      splitProgress: 1,
+      dispersion: 1.55,
+      masterRotY: 0.58,
+      masterRotX: 0.22,
+      camZ: 9.8,
+      ease: 'none',
+      scrollTrigger: {
+        trigger: document.body,
+        start: 'top top',
+        end: 'bottom bottom',
+        scrub: reduced ? true : 1.15,
+        invalidateOnRefresh: true
+      }
+    });
+  }
+
+  /* ----------------------------------------------------------------
+     5. POINTER PARALLAX & RESIZE
+  -----------------------------------------------------------------*/
+  let pointerX = 0, pointerY = 0, pTargetX = 0, pTargetY = 0;
+
+  if (!reduced) {
+    window.addEventListener('pointermove', function (e) {
+      pTargetX = (e.clientX / window.innerWidth) * 2 - 1;
+      pTargetY = -((e.clientY / window.innerHeight) * 2 - 1);
+    }, { passive: true });
+  }
+
+  let rzT;
+  window.addEventListener('resize', function () {
+    clearTimeout(rzT);
+    rzT = setTimeout(function () {
+      W = window.innerWidth; H = window.innerHeight;
+      camera.aspect = W / H;
+      camera.updateProjectionMatrix();
+      renderer.setSize(W, H);
+      if (typeof ScrollTrigger !== 'undefined') ScrollTrigger.refresh();
+    }, 140);
+  }, { passive: true });
+
+  /* ----------------------------------------------------------------
+     6. RENDER LOOP
+  -----------------------------------------------------------------*/
+  const clock = new THREE.Clock();
+
+  function frame() {
+    requestAnimationFrame(frame);
+    if (document.hidden || document.body.getAttribute('data-view') === 'dashboard') return;
+
+    const elapsed = reduced ? 0 : clock.getElapsedTime();
+    pointerX += (pTargetX - pointerX) * 0.05;
+    pointerY += (pTargetY - pointerY) * 0.05;
+
+    const sp = scrollState.splitProgress;
+    const floatY = Math.sin(elapsed * 1.15) * 0.07;
+
+    leftHalfGroup.position.set(
+      heroPose.leftPos.x - sp * 2.0,
+      heroPose.leftPos.y + sp * 0.45 + floatY,
+      heroPose.leftPos.z + sp * 0.55
+    );
+    leftHalfGroup.rotation.set(
+      heroPose.leftRot.x + sp * 0.35 + Math.sin(elapsed * 0.7) * 0.02,
+      heroPose.leftRot.y + sp * 0.42,
+      heroPose.leftRot.z + sp * 0.28 + Math.cos(elapsed * 0.8) * 0.02
+    );
+
+    rightHalfGroup.position.set(
+      heroPose.rightPos.x + sp * 2.0,
+      heroPose.rightPos.y - sp * 0.35 - floatY,
+      heroPose.rightPos.z + sp * 0.45
+    );
+    rightHalfGroup.rotation.set(
+      heroPose.rightRot.x - sp * 0.28 + Math.cos(elapsed * 0.7) * 0.02,
+      heroPose.rightRot.y - sp * 0.45,
+      heroPose.rightRot.z - sp * 0.25 + Math.sin(elapsed * 0.8) * 0.02
+    );
+
+    shards.forEach(function (s) {
+      s.mesh.position.y = s.basePos.y + Math.sin(elapsed * 1.3 + s.phase) * 0.09 - sp * 0.6;
+      if (!reduced) {
+        s.mesh.rotation.x += 0.003;
+        s.mesh.rotation.y += 0.004;
+      }
+    });
+
+    masterGroup.position.x = pointerX * 0.32;
+    masterGroup.position.y = 0.08 + pointerY * 0.24;
+    masterGroup.rotation.y = scrollState.masterRotY + pointerX * 0.14;
+    masterGroup.rotation.x = scrollState.masterRotX - pointerY * 0.10;
+    camera.position.z = scrollState.camZ;
+
+    const totalDisp = scrollState.dispersion;
+    for (let i = 0; i < PELLET_COUNT; i++) {
+      const p = pelletMeta[i];
+      const swirlX = Math.cos(elapsed * p.speed + p.phase) * 0.14;
+      const swirlY = Math.sin(elapsed * p.speed * 1.15 + p.phase) * 0.16;
+      const swirlZ = Math.sin(elapsed * p.speed + p.phase) * 0.14;
+
+      dummy.position.set(
+        p.basePos.x + p.driftDir.x * totalDisp + swirlX,
+        p.basePos.y + p.driftDir.y * totalDisp + swirlY,
+        p.basePos.z + p.driftDir.z * totalDisp + swirlZ
+      );
+      dummy.scale.setScalar(p.radius);
+      dummy.updateMatrix();
+      pelletInstancedMesh.setMatrixAt(i, dummy.matrix);
+    }
+    pelletInstancedMesh.instanceMatrix.needsUpdate = true;
+
+    starGlints.rotation.z = elapsed * 0.02;
+    glintMat.opacity = 0.62 + Math.sin(elapsed * 2.2) * 0.16;
+
+    renderer.render(scene, camera);
+  }
+
+  function boot() {
+    buildTimeline();
+    frame();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  window.addEventListener('load', function () {
+    if (typeof ScrollTrigger !== 'undefined') ScrollTrigger.refresh();
+  });
+})();
+</script>
+</div>
+<!-- STITCH_THREEJS_END:ANIMATION_17 -->
+<!-- CELESTIAL ATMOSPHERIC VIGNETTE OVERLAY -->
+<div class="fixed inset-0 pointer-events-none z-[1] bg-[radial-gradient(ellipse_at_center,rgba(5,6,8,0.48)_0%,rgba(5,6,8,0.28)_48%,rgba(5,6,8,0.68)_82%,rgba(5,6,8,0.94)_100%)]"></div>
+<!-- NAVIGATION BAR -->
+<header class="fixed top-0 w-full z-50 bg-[#050608]/75 backdrop-blur-xl border-b border-[#343a40]/60"><div class="h-16 max-w-7xl mx-auto px-6 lg:px-12 flex items-center justify-between gap-4"><div class="flex items-center gap-6"><div class="flex items-center gap-2.5"><img alt="StegnoZ shield" class="h-8 w-auto object-contain brightness-0 invert opacity-90" src="/stegnoz-mark.svg"><span class="font-grotesk text-[17px] uppercase tracking-tight text-[#f8f9fa] font-bold">Stegno<span class="text-[#adb5bd]">Z</span></span></div><div class="hidden xl:flex items-center gap-2 px-3 py-1 rounded-full bg-[#212529]/80 border border-[#343a40] shadow-sm"><span class="w-1.5 h-1.5 rounded-full bg-[#f8f9fa] animate-pulse"></span><span class="font-grotesk text-[11px] uppercase tracking-wider text-[#ced4da] font-medium">Offline pipeline · Research console</span></div></div><nav class="hidden lg:flex items-center gap-6" data-active-classes="text-[#f8f9fa] border-b border-[#f8f9fa] font-medium"><a aria-current="page" class="transition-colors py-1 text-[#f8f9fa] border-b border-[#f8f9fa] text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="platform" href="#platform">Platform</a><a class="text-[#adb5bd] hover:text-[#f8f9fa] text-sm transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="cohort-explorer" href="/dashboard">Research console</a><a class="text-[#adb5bd] hover:text-[#f8f9fa] text-sm transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="data-pipeline" href="#pipeline">Data pipeline</a><a class="text-[#adb5bd] hover:text-[#f8f9fa] text-sm transition-colors py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="audit-and-privacy" href="#privacy">Privacy &amp; limits</a></nav><div class="flex items-center gap-4"><a class="hidden sm:inline-flex items-center justify-center whitespace-nowrap rounded-full text-xs font-semibold tracking-wide transition-all bg-[#f8f9fa] text-[#212529] shadow-md hover:bg-[#e9ecef] active:scale-95 h-9 px-5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="researcher-console" href="/dashboard">Launch Researcher Console</a></div></div></header>
+<!-- MAIN CONTENT WRAPPER -->
+<main class="w-full pt-16 relative z-10 min-h-screen">
+<div class="flex flex-col w-full overflow-x-hidden">
+<!-- HERO SECTION -->
+<div class="relative w-full pt-16 pb-20 gs-reveal" id="platform">
+<div class="relative z-10 max-w-5xl mx-auto px-6 flex flex-col items-center text-center">
+<!-- TOP STATUS CONTROLS -->
+<div class="w-full flex flex-wrap items-center justify-between gap-4 mb-8">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#212529]/80 border border-[#343a40] backdrop-blur-md shadow-sm">
+<span class="w-2 h-2 rounded-full bg-[#f8f9fa] animate-ping"></span>
+<span class="font-grotesk text-[11px] uppercase text-[#e9ecef] tracking-wider font-medium">StegnoZ // Secret Wards</span>
+</div>
+<div class="inline-flex items-center gap-3 px-3 py-1 rounded-full bg-[#212529]/80 border border-[#343a40] backdrop-blur-md">
+<span class="font-grotesk text-[11px] uppercase text-[#adb5bd] flex items-center gap-1.5">Privacy pipeline</span>
+<button class="inline-flex items-center justify-center whitespace-nowrap rounded-full text-[11px] font-medium tracking-wide transition-colors border border-[#495057] bg-[#212529]/90 text-[#e9ecef] hover:bg-[#343a40] hover:text-[#f8f9fa] h-7 px-3 py-1 gap-1.5 focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" id="motion-toggle-btn" onclick="toggleMotion()"><span class="material-symbols-outlined text-[13px]" id="motion-icon">visibility_off</span><span id="motion-label">Dim backdrop</span></button>
+</div>
+</div>
+<!-- MAIN HEADLINE (With localized scrim for razor-sharp contrast over the 3D capsule) -->
+<div class="hero-text-scrim space-y-4 max-w-4xl px-4 py-4 rounded-3xl">
+<div class="inline-block">
+<span class="font-grotesk text-[11px] uppercase px-3 py-1 rounded-full bg-[#212529]/90 border border-[#495057] text-[#ced4da] tracking-widest">Offline clinical data preparation</span>
+</div>
+<h1 class="editorial-title text-4xl sm:text-5xl lg:text-6xl text-[#f8f9fa] tracking-tight font-extrabold leading-[1.08]">Protect patients. Preserve care.<br><span class="text-transparent bg-clip-text bg-gradient-to-r from-[#f8f9fa] via-[#dee2e6] to-[#adb5bd]">Make research possible.</span></h1>
+<p class="text-base sm:text-lg text-[#ced4da] max-w-3xl mx-auto leading-relaxed pt-2">StegnoZ processes English, Hindi and Hinglish hospital records offline. It detects identifiers, links patient histories, preserves clinical facts and prepares aggregate cohorts for research.</p>
+</div>
+<!-- CRED-STYLE QUERY BAR -->
+<div class="w-full max-w-3xl mt-10">
+<form action="/dashboard" class="relative group p-1.5 rounded-2xl bg-[#212529]/80 border border-[#343a40] backdrop-blur-2xl shadow-2xl transition-all" method="GET">
+<div class="flex flex-col sm:flex-row items-center gap-2 p-2 rounded-xl bg-[#08090c]/90 border border-[#343a40]/60">
+<div class="flex items-center gap-3 pl-3 w-full sm:w-auto flex-1">
+<span class="material-symbols-outlined text-[#adb5bd] text-[22px]">psychology_alt</span>
+<input class="w-full bg-transparent text-[#f8f9fa] placeholder:text-[#6c757d] text-sm focus:outline-none focus-visible:outline-none" id="research-query-input" name="q" placeholder="Ask a supported question, such as 'Show women with diabetes'" type="text" value="">
+</div>
+<a class="w-full sm:w-auto inline-flex items-center justify-center whitespace-nowrap rounded-full text-xs font-semibold tracking-wide transition-all bg-[#f8f9fa] text-[#212529] shadow hover:bg-[#e9ecef] active:scale-95 h-10 px-6 py-2.5 gap-2 cursor-pointer focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" href="/dashboard" id="hero-explore-cta"><span>Explore cohorts</span><span class="material-symbols-outlined text-[17px]">arrow_forward</span></a>
+</div>
+</form>
+<!-- SAMPLE PROMPT PILLS -->
+<div class="flex flex-wrap items-center justify-center gap-2 mt-4 text-left">
+<span class="font-grotesk text-[11px] uppercase tracking-wider text-[#6c757d] mr-1">Try a question:</span>
+<button class="inline-flex items-center justify-center whitespace-nowrap rounded-full text-xs font-medium transition-colors bg-[#212529]/80 border border-[#343a40] text-[#ced4da] hover:bg-[#343a40] hover:text-[#f8f9fa] h-7 px-3.5 focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" onclick="setQuery('Show patients with diabetes')">Patients with diabetes</button>
+<button class="inline-flex items-center justify-center whitespace-nowrap rounded-full text-xs font-medium transition-colors bg-[#212529]/80 border border-[#343a40] text-[#ced4da] hover:bg-[#343a40] hover:text-[#f8f9fa] h-7 px-3.5 focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" onclick="setQuery('Show women with hypertension')">Women with hypertension</button>
+<button class="inline-flex items-center justify-center whitespace-nowrap rounded-full text-xs font-medium transition-colors bg-[#212529]/80 border border-[#343a40] text-[#ced4da] hover:bg-[#343a40] hover:text-[#f8f9fa] h-7 px-3.5 focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" onclick="setQuery('Show age distribution')">Age distribution</button>
+</div>
+</div>
+<!-- VERIFICATION CHIPS ROW -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 w-full max-w-4xl mt-12">
+<div class="flex items-center gap-3 p-3.5 rounded-xl bg-[#212529]/60 border border-[#343a40]/80 backdrop-blur-md">
+<span class="material-symbols-outlined text-[#dee2e6] text-[20px]">verified_user</span>
+<div class="text-left"><div class="font-grotesk text-[13px] text-[#f8f9fa] font-semibold">Offline processing</div><div class="font-grotesk text-[10px] uppercase text-[#adb5bd]">CPU-only pipeline</div></div>
+</div>
+<div class="flex items-center gap-3 p-3.5 rounded-xl bg-[#212529]/60 border border-[#343a40]/80 backdrop-blur-md">
+<span class="material-symbols-outlined text-[#dee2e6] text-[20px]">memory</span>
+<div class="text-left"><div class="font-grotesk text-[13px] text-[#f8f9fa] font-semibold">Cross-file linkage</div><div class="font-grotesk text-[10px] uppercase text-[#adb5bd]">Conflict-aware matching</div></div>
+</div>
+<div class="flex items-center gap-3 p-3.5 rounded-xl bg-[#212529]/60 border border-[#343a40]/80 backdrop-blur-md">
+<span class="material-symbols-outlined text-[#dee2e6] text-[20px]">lock_clock</span>
+<div class="text-left"><div class="font-grotesk text-[13px] text-[#f8f9fa] font-semibold">Policy verification</div><div class="font-grotesk text-[10px] uppercase text-[#adb5bd]">Measured release risk</div></div>
+</div>
+<div class="flex items-center gap-3 p-3.5 rounded-xl bg-[#212529]/60 border border-[#343a40]/80 backdrop-blur-md">
+<span class="material-symbols-outlined text-[#dee2e6] text-[20px]">gavel</span>
+<div class="text-left"><div class="font-grotesk text-[13px] text-[#f8f9fa] font-semibold">Aggregate research</div><div class="font-grotesk text-[10px] uppercase text-[#adb5bd]">Small groups withheld</div></div>
+</div>
+</div>
+</div>
+</div>
+<!-- INTERACTIVE LIVE COHORT PREVIEW MODULE -->
+<!-- ARCHITECTURAL HERO SHOWCASE -->
+<!-- HOW STEGNOZ WORKS: THE 4-STAGE PRIVACY PIPELINE -->
+<section class="w-full max-w-7xl mx-auto px-6 py-20 gs-reveal" id="pipeline">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
+<div>
+<div class="flex items-center gap-2 mb-2"><span class="font-grotesk text-[10px] uppercase px-3 py-1 rounded-full bg-[#212529] border border-[#343a40] text-[#ced4da] tracking-widest font-medium">Deterministic cipher workflow</span></div>
+<h2 class="editorial-title text-3xl md:text-4xl text-[#f8f9fa] font-bold tracking-tight">How StegnoZ works: four connected stages</h2>
+</div>
+<p class="text-sm md:text-base text-[#adb5bd] max-w-md leading-relaxed">The pipeline reads varied hospital exports, detects personal data, links patient records and verifies each candidate release against the configured privacy policy.</p>
+</div>
+<!-- 4 STEP CARDS BENTO GRID -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="p-6 rounded-2xl bg-[#212529]/60 border border-[#343a40] backdrop-blur-md flex flex-col justify-between hover:bg-[#212529]/90 hover:border-[#495057] transition-all duration-300">
+<div>
+<div class="flex items-center justify-between mb-4"><span class="font-grotesk text-[10px] uppercase px-2.5 py-1 rounded-full bg-[#343a40] text-[#f8f9fa] font-semibold">Stage 01</span><span class="material-symbols-outlined text-[#ced4da] text-[22px]">translate</span></div>
+<h3 class="font-grotesk text-lg text-[#f8f9fa] font-bold mb-2">Ingest mixed hospital files</h3>
+<p class="text-xs text-[#adb5bd] leading-relaxed mb-4">Read CSV, TSV, JSON, FHIR R4 and notes. Detect identifiers in English, Hindi and Hinglish. Quarantine malformed or unsupported files.</p>
+</div>
+<div class="p-3 rounded-xl bg-[#08090c]/90 border border-[#343a40] font-grotesk text-[10px] text-[#adb5bd]">Supported inputs: CSV · TSV · JSON · FHIR R4 · notes</div>
+</div>
+<div class="p-6 rounded-2xl bg-[#212529]/60 border border-[#343a40] backdrop-blur-md flex flex-col justify-between hover:bg-[#212529]/90 hover:border-[#495057] transition-all duration-300">
+<div>
+<div class="flex items-center justify-between mb-4"><span class="font-grotesk text-[10px] uppercase px-2.5 py-1 rounded-full bg-[#343a40] text-[#f8f9fa] font-semibold">Stage 02</span><span class="material-symbols-outlined text-[#ced4da] text-[22px]">rule</span></div>
+<h3 class="font-grotesk text-lg text-[#f8f9fa] font-bold mb-2">Preserve clinical meaning</h3>
+<p class="text-xs text-[#adb5bd] leading-relaxed mb-4">Remove personal details while retaining diagnoses, medicines, dosages, vitals and laboratory values where the parser can identify them.</p>
+</div>
+<div class="p-3 rounded-xl bg-[#08090c]/90 border border-[#343a40] font-grotesk text-[10px] text-[#adb5bd]">Verification: residual identifier checks and file status</div>
+</div>
+<div class="p-6 rounded-2xl bg-[#212529]/60 border border-[#343a40] backdrop-blur-md flex flex-col justify-between hover:bg-[#212529]/90 hover:border-[#495057] transition-all duration-300">
+<div>
+<div class="flex items-center justify-between mb-4"><span class="font-grotesk text-[10px] uppercase px-2.5 py-1 rounded-full bg-[#343a40] text-[#f8f9fa] font-semibold">Stage 03</span><span class="material-symbols-outlined text-[#ced4da] text-[22px]">fingerprint</span></div>
+<h3 class="font-grotesk text-lg text-[#f8f9fa] font-bold mb-2">Link patient histories</h3>
+<p class="text-xs text-[#adb5bd] leading-relaxed mb-4">Compare identifier and name evidence across files with conflict checks and Fellegi–Sunter scores. Assign keyed pseudonymous IDs.</p>
+</div>
+<div class="p-3 rounded-xl bg-[#08090c]/90 border border-[#343a40] font-grotesk text-[10px] text-[#adb5bd]">Output: consistent IDs across linked records</div>
+</div>
+<div class="p-6 rounded-2xl bg-[#212529]/60 border border-[#343a40] backdrop-blur-md flex flex-col justify-between hover:bg-[#212529]/90 hover:border-[#495057] transition-all duration-300">
+<div>
+<div class="flex items-center justify-between mb-4"><span class="font-grotesk text-[10px] uppercase px-2.5 py-1 rounded-full bg-[#343a40] text-[#f8f9fa] font-semibold">Stage 04</span><span class="material-symbols-outlined text-[#ced4da] text-[22px]">security</span></div>
+<h3 class="font-grotesk text-lg text-[#f8f9fa] font-bold mb-2">Select and verify policy</h3>
+<p class="text-xs text-[#adb5bd] leading-relaxed mb-4">Search age, location and PIN generalization choices against observed risk. Apply patient-consistent date shifts and withhold a release when strict risk rules fail.</p>
+</div>
+<div class="p-3 rounded-xl bg-[#08090c]/90 border border-[#343a40] font-grotesk text-[10px] text-[#adb5bd]">Output: sanitized files · report.json · records.jsonl</div>
+</div>
+</div>
+</section>
+<!-- AUDIT TRANSPARENCY SUITE -->
+<!-- METHODOLOGY & INSTITUTIONAL CALLOUT -->
+<section class="w-full max-w-7xl mx-auto px-6 py-20 gs-reveal" id="privacy">
+<div class="rounded-3xl p-8 lg:p-14 bg-gradient-to-b from-[#212529]/90 to-[#08090c]/95 border border-[#343a40] relative overflow-hidden backdrop-blur-2xl">
+<div class="relative z-10 max-w-3xl space-y-6">
+<div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#212529] border border-[#495057] text-[#ced4da] font-grotesk text-[11px] uppercase tracking-wider font-medium">Explore the research workspace</div>
+<h2 class="editorial-title text-3xl md:text-5xl text-[#f8f9fa] font-bold tracking-tight leading-[1.12]">Ask a question. Inspect the cohort. Keep the limits in view.</h2>
+<p class="text-base lg:text-lg text-[#adb5bd] leading-relaxed">The researcher console shows aggregate counts from a labeled synthetic demo or an approved sanitized release. It does not expose patient records, and small breakdowns are withheld.</p>
+<div class="flex flex-wrap items-center gap-3 pt-4">
+<a class="inline-flex items-center justify-center whitespace-nowrap rounded-full text-xs font-semibold tracking-wide transition-all bg-[#f8f9fa] text-[#212529] shadow hover:bg-[#e9ecef] active:scale-95 h-12 px-8 py-3.5 gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" href="/dashboard"><span>Enter researcher console</span><span class="material-symbols-outlined text-[18px]">arrow_forward</span></a>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- FOOTER -->
+<footer class="w-full bg-[#050608]/95 border-t border-[#343a40]/60 py-10 relative z-10"><div class="max-w-7xl mx-auto px-6 lg:px-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-6"><div class="space-y-1"><div class="flex items-center gap-3"><span class="font-grotesk text-sm font-bold text-[#f8f9fa]">StegnoZ // Archival core</span><span class="font-grotesk text-[10px] uppercase px-2 py-0.5 rounded-full bg-[#212529] text-[#ced4da] border border-[#343a40]">Yugaantar DevForge Track 3</span></div><p class="text-xs text-[#adb5bd]">Offline clinical privacy pipeline · Aggregate research console</p></div><div class="flex flex-wrap items-center gap-6"><a class="text-xs text-[#adb5bd] hover:text-[#f8f9fa] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="platform" href="#pipeline">Platform specs</a><a class="text-xs text-[#adb5bd] hover:text-[#f8f9fa] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="audit-and-privacy" href="#privacy">Privacy &amp; limitations</a><a class="text-xs text-[#adb5bd] hover:text-[#f8f9fa] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f8f9fa]/40" data-path="researcher-console" href="/dashboard">Console gateway</a></div></div></footer>
+</div>
+
+</body>
+</html>
