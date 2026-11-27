@@ -16,7 +16,6 @@
 <a href="#scientific--mathematical-foundations"><img src="https://img.shields.io/badge/Privacy_Risk-0.00%25_(k_min_5)-brightgreen.svg" alt="Privacy Risk: 0.00%"></a>
 <a href="#security-boundaries--operating-limits"><img src="https://img.shields.io/badge/Staging-AES_256_GCM-blueviolet.svg" alt="Staging: AES-256-GCM"></a>
 <a href="#dual-operational-modes"><img src="https://img.shields.io/badge/Studio-Three.js_%2B_GSAP-black.svg" alt="3D Research Studio"></a>
-
 <img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python">
 <img src="https://img.shields.io/badge/Cryptography-AES_GCM-00599C" alt="Cryptography">
 <img src="https://img.shields.io/badge/pytest-0A9EDC?logo=pytest&logoColor=white" alt="pytest">
@@ -44,7 +43,7 @@ StegnoZ bridges the critical gap between **adversarial de-identification** and *
 1. **The Longitudinal Exposure & Date-Shift Trap:** Medical research requires exact intervals between events (length of stay, readmission timing, time-to-treatment). Global date shifts protect nobody if an adversary learns even one true date (Attack A5). Conversely, shifting dates independently per patient preserves clinical utility, but treating multi-visit timestamps as static quasi-identifiers causes an exponential combinatorial fingerprint ($P \approx 10^{-11}$), falsely making every patient look uniquely exposed (the Curse of Dimensionality, Aggarwal 2005).
 2. **Cross-Script Phonetic Identity Fragmentation:** Indian healthcare records continuously mix English, Devanagari Hindi, and Hinglish. Variations in name transliteration (`रीना` vs. `Reena` vs. `Rina`, `Mohammad` vs. `Mohd` vs. `मो.)`, honorific suffixes (*-ji*, *-sahab*, *-kumar*), and relative descriptors (*S/o*, *D/o*, *W/o*, *पुत्र*, *आत्मज*) split single patients into fragmented records that leak through partial joins.
 3. **Linguistic Context vs. Entity Traps:** Naive regex or dictionary matching destroys medical validity. A pattern matching names redacts `Parkinson's disease`, `Hashimoto thyroiditis`, or `Dr. Ramesh Gupta` (treating clinicians or eponyms as patients); a pattern matching relative prefixes redacts complaints like `C/O fever and cough` (mistaking Chief Complaint for "Care Of"); and numeric scrubbers redact clinical vitals like `Ramipril 5 mg OD` or `BP 138/86 mmHg` as phone numbers.
-4. **Adversarial Registry Linkage:** Under Kerckhoffs' principle, the adversary is equipped with an electoral-roll registry (`attacker/registry.csv`) containing the whole population ($4\text{--}5\times$ patient count). True privacy requires verifiable $k$-anonymity over all joinable quasi-identifiers without sacrificing clinical diagnoses or leaking side-channel metadata.
+4. **Adversarial Registry Linkage:** Under Kerckhoffs' principle, the adversary is equipped with an electoral-roll registry (`attacker/registry.csv`) containing the whole population (4x to 5x patient count). True privacy requires verifiable $k$-anonymity over all joinable quasi-identifiers without sacrificing clinical diagnoses or leaking side-channel metadata.
 
 ---
 
@@ -146,7 +145,7 @@ flowchart LR
 #### Stage 3: Reverse Privacy Engine & Lattice Search (`stegnoz/privacy.py`)
 * **Poset Generalization Lattice:** Explores a discrete partially ordered set:
   $$\text{Age Band } (5, 10, 20\text{ years}) \times \text{Location } (\text{Tehsil} \to \text{District}) \times \text{PIN } (\text{Prefix} \to \text{Drop})$$
-* **Encrypted Candidate Staging:** rewrites releases into temporary AES-256-GCM encrypted spool directories (`.verified-*`) and measures true empirical singling-out risk against an electoral-roll attacker registry ($4\text{--}5\times$ population factor).
+* **Encrypted Candidate Staging:** rewrites releases into temporary AES-256-GCM encrypted spool directories (`.verified-*`) and measures true empirical singling-out risk against an electoral-roll attacker registry (4x to 5x population factor).
 * **Mondrian Local Recoding:** Escalates only the specific outlier cells failing $k \ge 5$ anonymity. Strict `preserve_district: 1` limits geographic coarsening to maintain clinical epidemiological utility.
 * **Keyed Invariant Date Shifting:** Applies a secret, patient-specific additive delta $\Delta \in [21, 180]\text{ days}$, keeping hospital stays and intervals byte-accurate while rendering date-matching attacks futile.
 
@@ -308,8 +307,8 @@ If a candidate node leaves residual outlier patients exposed (e.g., an elderly r
 * `_relax_recode`: Precision is returned to every patient whose equivalence class does not require coarsening.
 
 ### 4. Cryptographic Keyed Pseudonyms & Secret Date Shifting
-* **Pseudonym Derivation:** Pseudonyms are computed via keyed HMAC-SHA256 initialized with `RAKSHA_SECRET`:
-  $$\text{PsN} = \text{HMAC-SHA256}(\text{IdentityToken}, \text{RAKSHA\_SECRET})[0:12]$$
+* **Pseudonym Derivation:** Pseudonyms are computed via keyed HMAC-SHA256 initialized with `RAKSHA_SECRET` ($K_{\text{secret}}$):
+  $$\text{PsN} = \operatorname{HMAC-SHA256}(\text{IdentityToken}, K_{\text{secret}})[0:12]$$
   This completely defeats Attack A6 (Pseudonym Inversion) and Attack A7 (Cross-Release Linkability).
 * **Length-of-Stay Invariant Shifting:** Every encounter date for patient $i$ is shifted by an invariant, keyed secret delta $\Delta_i \in [21, 180]\text{ days}$:
   $$t_{\text{published}} = t_{\text{actual}} + \Delta_i$$
