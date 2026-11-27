@@ -5,6 +5,7 @@
 <div align="center">
 
 <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg" alt="Python 3.11+"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 <a href="#empirical-benchmark--validation-results"><img src="https://img.shields.io/badge/Submission-READY_TO_SUBMIT-brightgreen.svg" alt="Submission: READY TO SUBMIT"></a>
 <a href="#empirical-benchmark--validation-results"><img src="https://img.shields.io/badge/Contract-CONTRACT_OK-brightgreen.svg" alt="Output Contract: Verified"></a>
 <a href="#testing--verification-suite"><img src="https://img.shields.io/badge/tests-104_passed_(100%25)-brightgreen.svg" alt="Tests: 104 Passed"></a>
@@ -413,6 +414,12 @@ Expand FHIR serialization to support full bidirectional OMOP Common Data Model (
 
 ## Team & Authors
 
-**Developed by Team StegnoZ**  
+**Developed by Team Devduos for Yugaantar 2026**  
 *Built for Secret Wards — Yugaantar DevForge Track 3*  
 *Repository: [https://github.com/itsmeshruti1/StegnoZ.git](https://github.com/itsmeshruti1/StegnoZ.git)*
+
+---
+
+## License
+
+This project is licensed under the terms of the MIT License. See [LICENSE](LICENSE) for details.
