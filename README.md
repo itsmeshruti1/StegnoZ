@@ -370,6 +370,22 @@ python tools\synth_dataset.py --out _eval\synth --score _eval\synthout
 
 ---
 
+## Offline 3D Research Explorer
+
+The release is not the end of the pipeline. StegnoZ ships a loopback-only explorer that reads an approved release through `report.json` and `records.jsonl`, so the privacy work can be inspected rather than taken on trust. Start it with `python dashboard/research_server.py --release <output_dir>` and open `http://127.0.0.1:8765`. Everything is served by the Python standard library, GSAP is bundled locally and the typography is system fonts, so the interface works with the network switched off.
+
+**Platform landing** — the animated capsule backdrop is a local Three.js scene with a pause control and a `prefers-reduced-motion` fallback. The question bar accepts the same restricted grammar as the console.
+
+![StegnoZ platform landing page, showing the offline pipeline banner, the 3D capsule backdrop and the supported-question search bar](docs/assets/research-explorer-landing.webp)
+
+**Researcher Cockpit** — aggregate cohort exploration over the synthetic demo release. Facets for condition, age band, sex and source file; distinct linked profiles rather than row counts; and a disclosure-control footer that states the boundaries plainly. Any breakdown group holding fewer than five profiles is withheld in full, which is the `k_target` from `config/policy.yaml` applied at presentation time as well as at release time.
+
+![StegnoZ Researcher Cockpit, showing cohort facets, condition distribution, age composition and the privacy boundaries notice](docs/assets/researcher-console-cohorts.webp)
+
+Patient-level data never reaches the browser: the adapter serves aggregates only, refuses strict-blocked releases, and the server binds to loopback. Repeated-query inference is **not** defended against, which the interface says on its own face — this is an exploratory review tool, not a public data portal.
+
+---
+
 ## Security, Boundaries & Operating Limits
 
 1. **Memory-Only Ephemeral Encryption:** Candidate files in temporary spool directories are encrypted using AES-256-GCM with a random, ephemeral key generated at runtime. Nonces are never reused, and plaintexts are erased from staging upon process exit.
