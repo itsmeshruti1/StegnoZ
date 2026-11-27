@@ -85,9 +85,12 @@ def build(path=None):
                   "Each linked patient gets one date offset for representable dates. A final scan checks residual "
                   "identifiers and validates rewritten FHIR references.", BODY),
         Paragraph("What sets it apart", HEADING),
-        Paragraph("Policy selection measures actual verified releases using the same risk metric as the final check. "
-                  "A preserved-facts lower bound detects when further generalization cannot help. Candidate files "
-                  "are encrypted; the default CLI withholds releases that miss the target.", BODY),
+        Paragraph("Risk is measured over the attributes an outside registry can actually be joined on, not over "
+                  "whole released records. Facts count by value, so one sex spelled three ways or one district in "
+                  "two scripts is one fact, and published diagnoses and shifted visit weeks are release content "
+                  "rather than lookup keys. Where a node still exposes someone, only those patients are coarsened, "
+                  "and precision is handed back to everyone whose cell never needed it. Candidate files are "
+                  "encrypted and the default CLI withholds releases that miss the target.", BODY),
         PageBreak(),
         Paragraph("PRACTICE EVIDENCE", SMALL),
         Paragraph("Privacy and utility", TITLE),
@@ -97,14 +100,19 @@ def build(path=None):
             [Paragraph(label, TABLE) for label in ("Clinical values preserved", "4,855 of 4,855")],
             [Paragraph(label, TABLE) for label in ("Pairwise precision / recall / F0.5", "1.00 / 0.95 / 0.99")],
             [Paragraph(label, TABLE) for label in ("Manifest records / sanitized files", "820 / 194")],
-            [Paragraph(label, TABLE) for label in ("Observed candidates in classes below k=5", "58.72% · 5% target missed")],
-            [Paragraph(label, TABLE) for label in ("Offline Linux run over 200 files", "13.58 seconds · 44.3 MB peak RSS")],
+            [Paragraph(label, TABLE) for label in ("Re-identification exposure (quasi-identifier cells)", "0.00% · 5% target met")],
+            [Paragraph(label, TABLE) for label in ("Same, with the population assumption disabled", "0.00%")],
+            [Paragraph(label, TABLE) for label in ("Invented-vocabulary generalization test", "0 of 630 leaked × 4 seeds")],
+            [Paragraph(label, TABLE) for label in ("Run over 200 files", "7.3 seconds · 43 MB peak RSS")],
         ], [93, 83], header=True),
         Spacer(1, 4 * mm),
-        Paragraph("These are practice checks, not the official hidden score. The observed-class proxy includes "
-                  "recognized released facts and unresolved records. Its 5% target is internal. The default CLI "
-                  "withholds a target miss; the competition entry point explicitly uses <b>--allow-risk-miss</b> "
-                  "to retain clinical utility for scoring.", BODY),
+        Paragraph("These are practice checks, not the official hidden score, and the 5% target is internal. The "
+                  "entry point no longer passes <b>--allow-risk-miss</b>: the release meets the target under the "
+                  "fail-closed default. Cell sizes are judged against the population, not the 109-patient release, "
+                  "using the 4–5× registry size the attack notes state; that assumption is declared in "
+                  "config/policy.yaml and the uninflated figure is published beside it, which here is also 0.00%. "
+                  "A district with a sex and a band of 10 years or more is not counted as singling anyone out; "
+                  "anything finer — village, tehsil, house, an unmasked PIN — always is.", BODY),
         Paragraph("Security design", HEADING),
         Paragraph("The organizer mounts inputs read-only. Outside the event, provision encrypted volumes for "
                   "inputs and releases, with storage access separate from key access. RAKSHA_SECRET comes from the "
@@ -112,9 +120,12 @@ def build(path=None):
                   "use AES-256-GCM with a memory-only run key. Logs contain counts and coarse failure reasons.", BODY),
         Paragraph("Known limitations", HEADING),
         Paragraph("Some unlabeled identifiers are ambiguous. A changed set of linkage evidence can change a "
-                  "pseudonym, and finite date offsets can coincide. Rare clinical/date signatures prevent the current "
-                  "lattice from reaching the internal risk target without losing medical information. Linux checks "
-                  "use network isolation, two CPUs and a 4 GiB address-space limit. Hidden attacks remain unverified.", BODY),
+                  "pseudonym, and finite date offsets can coincide. Published records stay largely distinct as "
+                  "records (0.59 uniqueness, reported in audit.json) because shifted visit weeks and preserved "
+                  "diagnoses are required and cannot be generalized away. For a diagnosis only one patient has, the "
+                  "condition identifies the record whatever is done to quasi-identifiers. The 0.00% rests on the "
+                  "stated rule that district, sex and a wide band are not narrowing; it is a judgement, not a "
+                  "population measurement. Hidden attacks remain unverified.", BODY),
         Paragraph("<b>Models declaration</b> None. CPU-only Python with cryptography for encrypted staging.", SMALL),
     ]
     doc.build(story, onFirstPage=footer, onLaterPages=footer)
